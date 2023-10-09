@@ -8,6 +8,9 @@ from ContrastiveModules import ContrastiveModel
 
 
 class CnnGru(ContrastiveModel):
+    """
+    A model proposed by https://doi.org/10.1109/TIM.2022.3227956.
+    """
     def __init__(self,
                  in_features,
                  window_size,
