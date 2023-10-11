@@ -87,8 +87,8 @@ class ContrastiveModel(TrainableModule):
         """
         assert len(x.shape) == 4
         batch, num, w, f = x.shape
-        pos = x[:, 0, :, :]  # (batch, f, w)
-        neg = x[:, 1:, :, :]  # (batch, num_n, f, w)
+        pos = x[:, 0, :, :]  # (batch, w, f)
+        neg = x[:, 1:, :, :]  # (batch, num_n, w, f)
         mask = torch.zeros_like(pos).uniform_(0, 1)  # random drop features from x to get augment samples. (30%)
         mask = torch.where(mask < 0.7, 1, 0).to(self.device)
         pos_aug = mask * pos
