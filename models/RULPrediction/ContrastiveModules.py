@@ -98,7 +98,9 @@ class ContrastiveModel(TrainableModule):
             feature_neg[i] = self.feature_extractor(neg[:, i, :, :])
         feature_neg = torch.stack(feature_neg, dim=1)
         feature_pos_aug = self.feature_extractor(pos_aug)
-        neg_weights = torch.abs(labels[:, 1:] - labels[:, 0:1])
+        neg_weights = (labels[:, 1:] - labels[:, 0:1]) * 2
+        neg_weights_dir = torch.where(neg_weights < 0, -1, 1)
+        neg_weights = neg_weights_dir * neg_weights ** 2
         return feature_pos, feature_pos_aug, feature_neg, neg_weights
 
     def feature_extractor(self, x):
@@ -114,5 +116,3 @@ class ContrastiveModel(TrainableModule):
         :return: tensors of feature
         """
         raise NotImplementedError("The feature_extractor method must be implemented.")
-
-
