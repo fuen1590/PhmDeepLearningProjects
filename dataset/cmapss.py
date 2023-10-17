@@ -88,8 +88,7 @@ class CmapssNegativeSampler(Sampler):
         self.interval_nums = interval_num
         self.engine_num = engine_num
 
-
-    def init_samples(self, index: int):
+    def sample(self, index: int):
         engine_id = self.ids[index]
         engine_ids = np.random.choice(a=np.unique(self.ids),
                                       size=self.engine_num,
@@ -121,6 +120,23 @@ class CmapssNegativeSampler(Sampler):
         neg_labels[0] = self.labels[index]  # n:n+1的方式来保持label拥有最后一个维度
         neg_ids[0] = engine_id  # 用于测试，查看是否所有负样本与正样本来自同一个引擎
         return np.stack(neg_samples), np.array(neg_labels)
+
+
+class CmapssRandomNegtiveSampler(Sampler):
+    def __init__(self, dataset: Cmapss, neg_num=10, sample_thresh=0.2):
+        super(CmapssRandomNegtiveSampler, self).__init__(dataset)
+        dataset.set_sampler(self)
+        self.neg_num = neg_num
+        self.labels = dataset.labels
+        self.data = dataset.data
+        self.thresh = sample_thresh
+
+    def sample(self, index: int):
+        indexes = np.squeeze(np.argwhere(np.abs(self.labels-self.labels[index]) > self.thresh))
+        indexes = np.random.choice(indexes, size=self.neg_num+1, replace=False)
+        indexes[0] = index
+        return self.data[indexes], self.labels[indexes]
+
 
 
 def generate_rul(df: pd.DataFrame, y_test: pd.DataFrame = None, normalize=False, threshold=0) -> pd.DataFrame:
@@ -311,9 +327,10 @@ if __name__ == '__main__':
                                            label_norm=True,
                                            scaler=pre.MinMaxScaler(),
                                            val_ratio=0.1)
-    sampler = CmapssNegativeSampler(train1, 10, 2)
+    # sampler = CmapssNegativeSampler(train1, 10, 2)
+    sampler = CmapssRandomNegtiveSampler(train1, 20)
     loader = torch.utils.data.DataLoader(train1, 32, True)
-    # for _, (x, y) in enumerate(loader):
-    #     print(x.shape)
-    #     print(y.shape)
-    #     break
+    for _, (x, y) in enumerate(loader):
+        print(x.shape)
+        print(y.shape)
+        break
