@@ -73,35 +73,49 @@ class CmapssNegativeSampler(Sampler):
     A Sampler used to construct a negative-positive pair to train a Contrastive Neural Network
     """
 
-    def __init__(self, dataset: Cmapss, neg_nums=4):
+    def __init__(self, dataset: Cmapss, engine_num=1, interval_num=4):
+        """
+        
+        :param dataset:
+        :param engine_num:
+        :param interval_num:
+        """
         super(CmapssNegativeSampler, self).__init__(dataset)
         dataset.set_sampler(self)
         self.ids = dataset.ids
         self.data = dataset.data
         self.labels = dataset.labels
-        self.neg_nums = neg_nums + 1  # +1 to eliminate the target sample itself.
+        self.interval_nums = interval_num
+        self.engine_num = engine_num
 
-    def sample(self, index: int):
+
+    def init_samples(self, index: int):
         engine_id = self.ids[index]
-        same_engine_sample_indexes = np.argwhere(self.ids == engine_id)
-        gap = same_engine_sample_indexes.shape[0] // self.neg_nums
-        neg_samples = [0] * self.neg_nums
-        neg_labels = [0] * self.neg_nums
-        neg_ids = [0] * self.neg_nums
+        engine_ids = np.random.choice(a=np.unique(self.ids),
+                                      size=self.engine_num,
+                                      replace=False)
+        if engine_id not in engine_ids:
+            engine_ids[0] = engine_id  # 保证index所在的引擎被采样
+        neg_samples = [0] * (self.interval_nums * self.engine_num)  # +1 to eliminate the target sample itself.
+        neg_labels = [0] * (self.interval_nums * self.engine_num)
+        neg_ids = [0] * (self.interval_nums * self.engine_num)
         j = 1  # 负样本数组索引，负样本的数组从1开始存入负样本采样结果，因为0位置需要放入正样本
         # start sampling
-        for i in range(self.neg_nums):
-            random_range_start = same_engine_sample_indexes[0][0] + i * gap
-            # 在最后一次循环内，保证采样边界到达同设备样本的最后一个下标，防止出现漏采
-            random_range_end = random_range_start + gap \
-                if i != self.neg_nums - 1 else same_engine_sample_indexes[-1][0] + 1
-            if random_range_start <= index < random_range_end:
-                continue
-            sample_index = np.random.choice(range(random_range_start, random_range_end), 1, replace=True)
-            neg_samples[j] = self.data[sample_index[0]]
-            neg_labels[j] = self.labels[sample_index[0]]  # n:n+1的方式保持label拥有最后一个维度
-            neg_ids[j] = self.ids[sample_index[0]]
-            j += 1
+        for engine in engine_ids:
+            sample_indexes = np.argwhere(self.ids == engine)
+            gap = sample_indexes.shape[0] // self.interval_nums
+            for i in range(self.interval_nums):
+                random_range_start = sample_indexes[0][0] + i * gap
+                # 在最后一次循环内，保证采样边界到达同设备样本的最后一个下标，防止出现漏采
+                random_range_end = random_range_start + gap \
+                    if i != self.interval_nums - 1 else sample_indexes[-1][0] + 1
+                if random_range_start <= index < random_range_end and engine == engine_id:
+                    continue
+                sample_index = np.random.choice(range(random_range_start, random_range_end), 1, replace=True)
+                neg_samples[j] = self.data[sample_index[0]]
+                neg_labels[j] = self.labels[sample_index[0]]  # n:n+1的方式保持label拥有最后一个维度
+                neg_ids[j] = self.ids[sample_index[0]]
+                j += 1
         # 最终数组的首位放入正样本
         neg_samples[0] = self.data[index]
         neg_labels[0] = self.labels[index]  # n:n+1的方式来保持label拥有最后一个维度
@@ -297,9 +311,9 @@ if __name__ == '__main__':
                                            label_norm=True,
                                            scaler=pre.MinMaxScaler(),
                                            val_ratio=0.1)
-    CmapssNegativeSampler(train1, 0)
+    sampler = CmapssNegativeSampler(train1, 10, 2)
     loader = torch.utils.data.DataLoader(train1, 32, True)
-    for _, (x, y) in enumerate(loader):
-        print(x.shape)
-        print(y.shape)
-        break
+    # for _, (x, y) in enumerate(loader):
+    #     print(x.shape)
+    #     print(y.shape)
+    #     break
