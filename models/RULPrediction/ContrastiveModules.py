@@ -4,10 +4,10 @@ import torch.nn as nn
 from train.trainable import TrainableModule
 
 
-class WeightedContrastiveLoss(nn.Module):
+class WeightedInfoNCELoss(nn.Module):
     def __init__(self, temperature=0.2):
+        super(WeightedInfoNCELoss, self).__init__()
         self.temperature = temperature
-        super().__init__()
 
     def forward(self, x, pos, neg, neg_weight=None):
         """
@@ -28,11 +28,11 @@ class WeightedContrastiveLoss(nn.Module):
         if len(neg.shape) > 2:
             neg = torch.flatten(neg, 2)  # (batch, num_n, feature)
         x = x.unsqueeze(dim=1)  # (batch, 1, feature)
-        x_norm = torch.nn.functional.normalize(x, dim=-1)
-        pos_norm = torch.nn.functional.normalize(pos, dim=-1)
-        neg_norm = torch.nn.functional.normalize(neg, dim=-1)
-        pos_sim = torch.cosine_similarity(x_norm, pos_norm, dim=2)  # positive samples similarity (batch, num_p)
-        neg_sim = torch.cosine_similarity(x_norm, neg_norm, dim=2)  # positive samples similarity (batch, num_n)
+        # x_norm = torch.nn.functional.normalize(x, dim=-1)
+        # pos_norm = torch.nn.functional.normalize(pos, dim=-1)
+        # neg_norm = torch.nn.functional.normalize(neg, dim=-1)
+        pos_sim = torch.cosine_similarity(x, pos, dim=2)  # positive samples similarity (batch, num_p)
+        neg_sim = torch.cosine_similarity(x, neg, dim=2)  # positive samples similarity (batch, num_n)
         if neg_weight is not None:
             neg_sim = torch.mul(neg_sim, neg_weight)
         nominator = torch.exp((torch.div(pos_sim, self.temperature)))  # (batch, num_p)
@@ -46,17 +46,44 @@ class WeightedContrastiveLoss(nn.Module):
 
 
 class MSEContrastiveLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, contrastive="InfoNCE"):
         super(MSEContrastiveLoss, self).__init__()
         self.mse = torch.nn.MSELoss()
-        self.contrastive = WeightedContrastiveLoss(0.2)
+        assert contrastive in ["InfoNCE", "Triplet"]
+        if contrastive == "InfoNCE":
+            self.contrastive = WeightedInfoNCELoss(0.2)
+        elif contrastive == "Triplet":
+            self.contrastive = TripletLoss()
 
     def forward(self, predict, label, x=None, pos=None, neg=None, neg_weight=None):
-        if x is not None:
+        if x is not None and pos is not None and neg is not None:
             loss = self.mse(predict, label[:, 0:1]) + self.contrastive(x, pos, neg, neg_weight)
-            # loss = self.mse(predict, label[:, 0:1])
         else:
             loss = self.mse(predict, label)
+        return loss
+
+
+class TripletLoss(nn.Module):
+    def __init__(self):
+        super(TripletLoss, self).__init__()
+
+    def forward(self, x, pos, neg, neg_weight):
+        """
+
+        :param x: Anchor samples with shape (b, f)
+        :param pos: Positive sample with shape (b, f)
+        :param neg: Negative sample with shape (b, n_n, f)
+        :param neg_weight: Alpha for every negative samples with shape (b, n_n)
+        :return: A scalar value of Triplet Loss.
+        """
+        if neg_weight is None:
+            raise RuntimeError("The neg_weight could not be None when using Triplet Loss.")
+        x = torch.unsqueeze(x, dim=1)  # (b, 1, f)
+        pos = torch.unsqueeze(pos, dim=1)  # (b, 1, f)
+        pos_dis = torch.sum(torch.square(torch.subtract(x, pos)), 2)  # (b, 1)
+        neg_dis = torch.sum(torch.square(torch.subtract(x, neg)), 2)  # (b, n)
+        basic_loss = torch.add(torch.subtract(pos_dis, neg_dis), neg_weight)
+        loss = torch.mean(torch.max(basic_loss, torch.zeros_like(basic_loss)))
         return loss
 
 
@@ -87,20 +114,18 @@ class ContrastiveModel(TrainableModule):
         """
         assert len(x.shape) == 4
         batch, num, w, f = x.shape
-        pos = x[:, 0, :, :]  # (batch, w, f)
-        neg = x[:, 1:, :, :]  # (batch, num_n, w, f)
+
+        x_ = x.view(batch*num, w, f)
+        pos = x[:, 0, :, :]
         mask = torch.zeros_like(pos).uniform_(0, 1)  # random drop features from x to get augment samples. (30%)
         mask = torch.where(mask < 0.7, 1, 0).to(self.device)
         pos_aug = mask * pos
-        feature_pos = self.feature_extractor(pos)
-        feature_neg = [0] * (num - 1)
-        for i in range(num - 1):
-            feature_neg[i] = self.feature_extractor(neg[:, i, :, :])
-        feature_neg = torch.stack(feature_neg, dim=1)
+        features = self.feature_extractor(x_)
         feature_pos_aug = self.feature_extractor(pos_aug)
-        neg_weights = (labels[:, 1:] - labels[:, 0:1]) * 2
-        neg_weights_dir = torch.where(neg_weights < 0, -1, 1)
-        neg_weights = neg_weights_dir * neg_weights ** 2
+        features = features.view(batch, num, -1)
+        feature_pos = features[:, 0]
+        feature_neg = features[:, 1:]
+        neg_weights = torch.abs(labels[:, 1:] - labels[:, 0:1])
         return feature_pos, feature_pos_aug, feature_neg, neg_weights
 
     def feature_extractor(self, x):

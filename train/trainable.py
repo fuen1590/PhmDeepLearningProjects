@@ -49,7 +49,7 @@ class TrainableModule(nn.Module):
                      batch_size: int = 256,
                      num_workers: int = 8,
                      eval_shuffle=True):
-        self.train_loader = DataLoader(train_set, batch_size, shuffle=True, num_workers=num_workers)
+        self.train_loader = DataLoader(train_set, batch_size, shuffle=True, num_workers=num_workers, pin_memory=True)
         self.test_loader = DataLoader(test_set, batch_size, shuffle=False, num_workers=num_workers)
         if eval_set is not None:
             self.eval_loader = DataLoader(eval_set, batch_size, shuffle=eval_shuffle, num_workers=num_workers)
