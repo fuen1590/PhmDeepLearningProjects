@@ -75,10 +75,10 @@ class CmapssNegativeSampler(Sampler):
 
     def __init__(self, dataset: Cmapss, engine_num=1, interval_num=4):
         """
-        
-        :param dataset:
-        :param engine_num:
-        :param interval_num:
+        :param dataset: The target dataset.
+        :param engine_num: The number of sampling engine, should >= 1. The 'index' engine will be sampled at least.
+        :param interval_num: The number of split intervals for one engine.This argument indicates the number of
+                             negative samples.
         """
         super(CmapssNegativeSampler, self).__init__(dataset)
         dataset.set_sampler(self)
@@ -136,7 +136,6 @@ class CmapssRandomNegtiveSampler(Sampler):
         indexes = np.random.choice(indexes, size=self.neg_num+1, replace=False)
         indexes[0] = index
         return self.data[indexes], self.labels[indexes]
-
 
 
 def generate_rul(df: pd.DataFrame, y_test: pd.DataFrame = None, normalize=False, threshold=0) -> pd.DataFrame:
@@ -327,8 +326,7 @@ if __name__ == '__main__':
                                            label_norm=True,
                                            scaler=pre.MinMaxScaler(),
                                            val_ratio=0.1)
-    # sampler = CmapssNegativeSampler(train1, 10, 2)
-    sampler = CmapssRandomNegtiveSampler(train1, 20)
+    sampler = CmapssNegativeSampler(train1, 1, 4)
     loader = torch.utils.data.DataLoader(train1, 32, True)
     for _, (x, y) in enumerate(loader):
         print(x.shape)
