@@ -1,50 +1,51 @@
 from enum import Enum
 from threading import Thread
 import os
-
 import numpy as np
 import pandas as pd
-
 from torch.utils.data import Dataset
-from torch.utils.data.dataset import T_co
-
-DEFAULT_ROOT = r"/home/fuen/DeepLearningProjects/FaultdiagnosisDataset/XJTU/XJTU-SY_Bearing_Datasets"
 
 
 class Condition(Enum):
-    """
-    This enum class contains all the operating conditions in XJTU bearing dataset.
-    This enum indicated the operation conditions of XJTUDataset.
-    """
     OP_A = "35Hz12kN"
     OP_B = "37.5Hz11kN"
     OP_C = "40Hz10kN"
 
 
-def get_label(XJTU_path: str,
-              OP_condition: Condition,
-              bearing_index: int,
-              start: int,
-              end: int):
-    """
-    Return fault labels of the bearing with 'index' in the XJTU_path from start to end.
+class LabelsType(Enum):
+    TYPE_C = "classification"
+    TYPE_P = "piecewise"
+    TYPE_R = "regression"
 
-    :param XJTU_path: the absolute ROOT path of XJTU dataset in the disk.
-    :param OP_condition: The XJTU_Condition enum.
-    :param bearing_index: The target bearing index in [1, 2, 3, 4, 5].
-    :param start: the start file index to process. Start from 1.
-    :param end: the end file index. If 0, the number of the last Start files will be read. If -1, equals to the last index.
-    :return: A int array contains the faults type (multiple faults are possible).
-             0 - normal
-             1 - inner race fault
-             2 - outer race fault
-             3 - cage fault
-             4 - ball fault
-    Sample:
-        [[1, 3], [1, 2], [1], [1], [0]] means the target bearing data points' labels are
-        [[inner race fault, cage fault], [inner race fault, outer race fault], [inner race fault]...]
 
+def get_labels(XJTU_path: str,
+               condition: Condition,
+               bearing_index: int,
+               start: int,
+               end: int,
+               labels_type: LabelsType = LabelsType.TYPE_P):
     """
+    Get RUL computed by FPT or the whole life or fault_points, and one .csv file corresponding to one label.
+    This function can extract the whole given bearings labels and put them into a 3-dimension list.
+
+    Noted:
+        FPTs is gotten from conference paper, and the fourth bearing in first condition
+        and the second bearing in third condition are not provided in the paper,
+        thus both of them can not use when using "piecewise" type labels.
+    :param XJTU_path: The root path of XJTU dataset in the disk. i.e. "../XJTU/XJTU-SY_Bearing_Datasets"
+    :param condition: A list of Condition enum. i.e. [Condition.OP_A, Condition.OP_B, Condition.OP_C]
+    :param bearing_index: A 2-dimension list corresponding to variable condition. i.e. [[1,2,3], [1,2,3,4], [1,3,4]]
+    :param start: It illustrates the start indexes of the .csv file in the given bearing to read,
+            so it has the same shape with parameter bearing_indexes, and the elements in it start from 1.
+    :param end: Like start_tokens.
+            If 0, the number of the last Start files will be read, if -1, equals to the last index.
+    :param labels_type: A LabelsType illustrating the type of getting data.
+    :return: A 3-dimension list storing RUL value of every .csv file.
+            i.e. labels[a][b][c], a in [0, 1, 2] is number of conditions from 0,
+            b in [0, 1, 2, 3, 4] is the number of 5 bearings from 0, c is the name of .csv files minus 1.
+    """
+    FPTs = [[77, 31, 58, None, 34], [454, 46, 314, 30, 120], [2376, None, 340, 1416, 6]]
+
     OP_A = [[2], [2], [2], [3], [1, 2]]
     OP_A_fault_points = [73, 35, 108, 82, 36]
     OP_B = [[1], [2], [3], [2], [2]]
@@ -52,43 +53,70 @@ def get_label(XJTU_path: str,
     OP_C = [[2], [1, 2, 3, 4], [1], [1], [2]]
     OP_C_fault_points = [2417, 2163, 342, 1420, 7]
 
-    path = XJTU_path + "/" + OP_condition.value + "/" + "Bearing" + str(bearing_index) + "/"
+    path = XJTU_path + "/" + condition.value + "/" + "Bearing" + str(bearing_index) + "/"
     bearing_index -= 1
     length = len(os.listdir(path))
     start, end = get_index_range(length, start, end)
     labels = [[]] * (end - start)
     label_index = 0
-    if OP_condition == Condition.OP_A:
+    if condition == Condition.OP_A:
+        FPT = FPTs[0][bearing_index]
         for i in range(start, end):
-            labels[label_index] = OP_A[bearing_index] if i >= OP_A_fault_points[bearing_index] else [0]
+            if labels_type == LabelsType.TYPE_C:
+                labels[label_index] = OP_A[bearing_index] if i >= OP_A_fault_points[bearing_index] else [0]
+            elif labels_type == LabelsType.TYPE_P:
+                labels[label_index] = [(length - i) / (length - FPT) if i > FPT else 1]
+            else:
+                labels[label_index] = [(length - i) / length]
             label_index += 1
-    elif OP_condition == Condition.OP_B:
+    elif condition == Condition.OP_B:
+        FPT = FPTs[1][bearing_index]
         for i in range(start, end):
-            labels[label_index] = OP_B[bearing_index] if i >= OP_B_fault_points[bearing_index] else [0]
+            if labels_type == LabelsType.TYPE_C:
+                labels[label_index] = OP_B[bearing_index] if i >= OP_B_fault_points[bearing_index] else [0]
+            elif labels_type == LabelsType.TYPE_P:
+                labels[label_index] = [(length - i) / (length - FPT) if i > FPT else 1]
+            else:
+                labels[label_index] = [(length - i) / length]
             label_index += 1
-    elif OP_condition == Condition.OP_C:
+    elif condition == Condition.OP_C:
+        FPT = FPTs[2][bearing_index]
         for i in range(start, end):
-            labels[label_index] = OP_C[bearing_index] if i >= OP_C_fault_points[bearing_index] else [0]
+            if labels_type == LabelsType.TYPE_C:
+                labels[label_index] = OP_C[bearing_index] if i >= OP_C_fault_points[bearing_index] else [0]
+            elif labels_type == LabelsType.TYPE_P:
+                labels[label_index] = [(length - i) / (length - FPT) if i > FPT else 1]
+            else:
+                labels[label_index] = [(length - i) / length]
             label_index += 1
     else:
-        raise Exception("Unexpected value of OP_Condition:" + OP_condition.value)
+        raise Exception("Unexpected value of OP_Condition:" + condition.value)
     return labels
+
+
+def get_index_range(length: int, start: int, end: int):
+    if end == 0:
+        return length - start + 1, length + 1
+    else:
+        return start, end + 1 if end != -1 else length + 1
 
 
 def read_bearing_data(XJTU_path: str,
                       OP_condition: Condition,
                       bearing_index: int,
-                      start: int,
-                      end=0):
+                      start=1,
+                      end=-1):
     """
     Reading all the csv files restored in the XJTU_path/condition/bearingX_n from start to end.
+    This function get the data from one bearing in one condition,
+    so a loop is needed if you want to get data from different bearings.
 
-    :param XJTU_path: the absolute ROOT path of XJTU dataset in the disk.
+    :param XJTU_path: The absolute ROOT path of XJTU dataset in the disk.
     :param OP_condition: The XJTU_Condition enum.
     :param bearing_index: The target bearing index in [1, 2, 3, 4, 5].
-    :param start: the start file index to read. Start from 1.
-    :param end: the end file index. If 0, the number of the last Start files will be read. If -1, equals to the last index
-    :return: a np.ndarray containing all the data.
+    :param start: The start file index to read. Start from 1.
+    :param end: The end file index. If 0, the number of the last Start files will be read. If -1, equals to the last index
+    :return  A np.ndarray containing all the data of the given bearings. i.e. (1376256, 2)
     """
     path = XJTU_path + "/" + OP_condition.value + "/" + "Bearing" + str(bearing_index) + "/"
     data_files = os.listdir(path)
@@ -107,13 +135,6 @@ def read_bearing_data(XJTU_path: str,
     return pd.concat(data_frame).to_numpy(np.float32)
 
 
-def get_index_range(length: int, start: int, end: int):
-    if end == 0:
-        return length - start + 1, length + 1
-    else:
-        return start, end + 1 if end != -1 else length + 1
-
-
 def check_degradation_point(condition: Condition,
                             bearing_index: int):
     import matplotlib.pyplot as plt
@@ -129,87 +150,92 @@ def check_degradation_point(condition: Condition,
 class XJTU_Dataset(Dataset):
     def __init__(self,
                  XJTU_path: str,
-                 op_conditions,
-                 bearing_indexes,
-                 start_tokens,
-                 end_tokens,
+                 condition: list,
+                 bearing_indexes: list,
+                 start_tokens: list,
+                 end_tokens: list,
+                 labels_type=LabelsType.TYPE_P,
                  class_num=5,
                  window_size=10000,
                  step_size=10000):
-        r"""
-        This class is a XJTU bearing Dataset used for constructing a PyTorch DataLoader.
-        .. note::
-            The fault points for different bearings are as follows:
-
-            11 - 73     21 - 455    31 - 2417
-
-            12 - 35     22 - 47     32 - 2163
-
-            13 - 108    23 - 127    33 - 342
-
-            14 - 82     24 - 31     34 - 1420
-
-            15 - 36     25 - 121    35 - 7
-
-        :param XJTU_path: The absolute ROOT path (/../XJTU/XJTU-SY_Bearing_Datasets) of XJTU dataset in the disk.
-        :param op_conditions: A single value or a list of values of Condition Enum. If a single value, all the bearing_indexes
-                              will be processed as this Condition. If a list of values of Condition Enum, the len(op_condition)
-                              == len(bearing_indexes) to consist with target bearings on different Conditions.
-        :param bearing_indexes: To indicate the target bearings with a two-dim list of integer.
-                                The one-dim is used when the 'op_conditions' is a single value. The two-dim is used when
-                                it is a list.
+        """
+        Get the samples and labels from XJTU dataset.
+        :param XJTU_path: The absolute root path of XJTU dataset file.
+                i.e. "../XJTU/XJTU-SY_Bearing_Datasets"
+        :param condition: A list of bearing operation conditions which need to be processed.
+                i.e. [Condition.OP_A, Condition.OP_B, Condition.OP_C], [Condition.OP_A]
+        :param bearing_indexes: A 2-dimension list of bearing corresponding to variable condition.
+                i.e. [[1, 2, 3], [1, 2, 3, 4], [1, 3, 4]], [[5]]
         :param start_tokens: The list of start file indexes to read. Start from 1.
         :param end_tokens: The list of end file indexes. If 0, the number of the last Start files will be read.
-                           If -1, equals to the last index
+                If -1, equals to the last index.
+        :param labels_type: A LabelsType illustrating the type of getting data.
+                LabelsType.TYPE_R, TYPE_P and TYPE_C represent "regression", "piecewise" and "classification", respectively.
+                The first illustrates the labels decreasing graduated,
+                the second illustrates the labels begin with 1 and gradually decrease when bearing lying on fault stage,
+                and the last illustrates the class labels.
+        :param class_num: The number of classes in classification task.
+        :param window_size: The size of sliding window when getting data.
+                The size is set to 8192 in the conference paper using regression data.
+        :param step_size: The size of sliding step when getting data.
+                The size is set to 1024 in the conference paper using regression data.
+        :return: A XJTU_Dataset type data which could be loaded by DataLoader.
         """
         import time
-        a = time.time()
-        if not isinstance(op_conditions, Condition) and not isinstance(op_conditions, list):
+        time0 = time.time()
+        if isinstance(condition, list):
+            assert len(condition) == len(bearing_indexes)
+        else:
             raise Exception("Unexpected value of op_conditions. It should be a Condition Enum value or the list of it.")
-        elif isinstance(op_conditions, list):
-            assert len(op_conditions) == len(bearing_indexes)
-            # ([a, b], [[1, 2, 3], [2, 3, 5]], [[50, 60, 70], [10, 20, 30]], [[50, 60, 70], [10, 20, 30]])
+        if not isinstance(labels_type, LabelsType):
+            raise Exception("Parameter labels_type is not expected!")
+        else:
+            print(f"The {labels_type.value} labels will be extracted.")
+        self.labels_type = labels_type
         self.threads = []
         self.raw_data = []
         self.labels = []
-        for con in range(len(op_conditions) if isinstance(op_conditions, list) else 1):
+        for con in range(len(condition)):
             for bearing_index in range(len(bearing_indexes[con])):
                 start = start_tokens[con][bearing_index]
                 end = end_tokens[con][bearing_index]
                 reader = self.ReaderThread(XJTU_path,
-                                           op_conditions[con]
-                                           if isinstance(op_conditions, list) else op_conditions,
+                                           condition[con],
                                            bearing_indexes[con][bearing_index],
                                            start,
-                                           end)
+                                           end,
+                                           self.labels_type)
                 reader.start()
                 self.threads.append(reader)
         for thread in self.threads:
             thread.join()
         for thread in self.threads:
             self.raw_data.append(thread.get_result()[0])
-            self.labels += thread.get_result()[1]
+            self.labels.extend(thread.get_result()[1])
         self.raw_data = np.concatenate(self.raw_data)
         self.window_size = window_size
         self.step_size = step_size
         self.class_num = class_num
-        b = time.time() - a
-        print("读取完毕，处理用时：{:.4f}".format(b))
+        print("Finishing reading data, processing time：{:.4f}s".format(time.time()-time0))
 
-    def __getitem__(self, index) -> T_co:
+    def __getitem__(self, index):
         bearing_index = self.step_size * index
         label_skip = self.raw_data.shape[0] // len(self.labels)  # How long a label represents the data stamp.
         label_index = bearing_index // label_skip
-        label = np.zeros(self.class_num)
-        for i in self.labels[label_index]:
-            label[i] = 1
-        return self.raw_data[label_index: label_index + self.window_size], label
+        if self.labels_type == LabelsType.TYPE_C:
+            label = np.zeros(self.class_num)
+            for i in self.labels[label_index]:
+                label[i] = 1
+            return self.raw_data[bearing_index: bearing_index + self.window_size], label
+        else:
+            return self.raw_data[bearing_index: bearing_index + self.window_size], \
+                self.labels[(bearing_index + self.window_size) // label_skip]
 
     def __len__(self):
-        return (self.raw_data.shape[0] - self.window_size) // self.step_size
+        return (self.raw_data.shape[0] - self.window_size) // self.step_size + 1
 
     class ReaderThread(Thread):
-        def __init__(self, path, condition, bearing_index, start, end):
+        def __init__(self, path, condition, bearing_index, start, end, labels_type):
             Thread.__init__(self)
             self.raw_data = []
             self.label = []
@@ -218,6 +244,7 @@ class XJTU_Dataset(Dataset):
             self.bearing_index = bearing_index
             self.startToken = start
             self.endToken = end
+            self.labels_type = labels_type
 
         def run(self) -> None:
             print(self.name + " is running for : {} [{}], from {} to {}...".format(self.condition, self.bearing_index,
@@ -227,7 +254,8 @@ class XJTU_Dataset(Dataset):
                                               self.bearing_index,
                                               self.startToken,
                                               self.endToken)
-            self.label = get_label(self.path, self.condition, self.bearing_index, self.startToken, self.endToken)
+            self.label = get_labels(self.path, self.condition, self.bearing_index, self.startToken,
+                                    self.endToken, self.labels_type)
             print(self.raw_data.shape)
             print(len(self.label))
 
@@ -236,4 +264,22 @@ class XJTU_Dataset(Dataset):
 
 
 if __name__ == '__main__':
-    a = get_label(DEFAULT_ROOT, Condition.OP_A, 1, 5, -1)
+    test_path = r"/home/dell/chuyuxin/Recurrent/re1/test_files"
+    DEFAULT_ROOT = r"/home/dell/chuyuxin/Recurrent/re1/XJTU/XJTU-SY_Bearing_Datasets"
+    conditions = [Condition.OP_A, Condition.OP_B]
+    train_bearings = [[1, 2, 3, 5], [1, 2, 3, 4]]
+    train_start = [[1, 1, 1, 1], [1, 1, 1, 1]]
+    train_end = [[-1, -1, -1, -1], [-1, -1, -1, -1]]
+    test_conditions = [Condition.OP_A, Condition.OP_C]
+    test_bearings = [[5], [1]]
+    test_start = [[1], [1]]
+    test_end = [[-1], [-1]]
+    window_size, step_size = 8192, 1024
+    # train_set = XJTU_Dataset(DEFAULT_ROOT, conditions, train_bearings, train_start, train_end, LabelsType.TYPE_C)
+    train_set = XJTU_Dataset(DEFAULT_ROOT, conditions, train_bearings, train_start, train_end, LabelsType.TYPE_R,
+                             window_size=window_size, step_size=step_size)
+    # test_set = XJTU_Dataset(DEFAULT_ROOT, conditions, test_bearings, test_start, test_end, LabelsType.TYPE_C,
+    #                         window_size=window_size, step_size=step_size)
+    # test_set = XJTU_Dataset(DEFAULT_ROOT, test_conditions, test_bearings, test_start, test_end, LabelsType.TYPE_P,
+    #                         window_size=window_size, step_size=step_size)
+    # labels = get_labels(DEFAULT_ROOT, Condition.OP_A, 1, 1, -1, LabelsType.TYPE_C)
