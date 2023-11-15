@@ -95,7 +95,7 @@ class CmapssNegativeSampler(Sampler):
                                       replace=False)
         if engine_id not in engine_ids:
             engine_ids[0] = engine_id  # 保证index所在的引擎被采样
-        neg_samples = [0] * (self.interval_nums * self.engine_num)  # +1 to eliminate the target sample itself.
+        neg_samples = [0] * (self.interval_nums * self.engine_num)
         neg_labels = [0] * (self.interval_nums * self.engine_num)
         neg_ids = [0] * (self.interval_nums * self.engine_num)
         j = 1  # 负样本数组索引，负样本的数组从1开始存入负样本采样结果，因为0位置需要放入正样本
@@ -178,31 +178,31 @@ def generate_window_sample(df: pd.DataFrame, window_size, slide_step, sensors):
               RUL labels for every window samples]
     """
     engine_grouped = df.groupby(by="unit_nr")
-    result = [0] * len(engine_grouped)  # engine sensor data
-    engine_ids = [0] * len(engine_grouped)  # engine id
-    labels = [0] * len(engine_grouped)  # rul labels
-    i = 0
+    result = [] # engine sensor data
+    engine_ids = [] # engine id
+    labels = []  # rul labels
     for _, engine in list(engine_grouped):
         data = engine[sensors].values  # shape = (n, f)
         if data.shape[0] < window_size:
             warnings.warn("The engine id {} with total length {} is shorter than window_size {}. "
                           "Hence, these samples were dropped!".format(_, data.shape[0], window_size))
             continue
-        s = [0] * ((data.shape[0] - window_size) // slide_step)  # temporal sensor data
-        e = [0] * ((data.shape[0] - window_size) // slide_step)  # temporal engine data. To correspond with each sample.
-        rul = [0] * ((data.shape[0] - window_size) // slide_step)  # temporal rul data. To correspond with each sample.
+        sample_nums = (data.shape[0] - window_size) // slide_step + 1
+        s = [0] * sample_nums  # temporal sensor data
+        e = [0] * sample_nums  # temporal engine data. To correspond with each sample.
+        rul = [0] * sample_nums  # temporal rul data. To correspond with each sample.
+        engine_id = engine["unit_nr"].iloc[0]
         for j in range(len(s)):
-            s[j] = data[j:j + window_size]
-            e[j] = engine["unit_nr"].iloc[0]
+            s[j] = data[j*slide_step:j*slide_step + window_size]
+            e[j] = engine_id
             rul[j] = engine["rul"].iloc[
-                j + window_size]  # The label is set to the last time stamp of the sample window.
-        result[i] = s
-        engine_ids[i] = e
-        labels[i] = rul
-        i += 1
-    return np.concatenate(result[:i], dtype=np.float64), \
-           np.concatenate(engine_ids[:i], dtype=np.float64), \
-           np.concatenate(labels[:i], dtype=np.float64)
+                j*slide_step + window_size - 1]  # The label is set to the last time stamp of the sample window.
+        result.append(s)
+        engine_ids.append(e)
+        labels.append(rul)
+    return np.concatenate(result, dtype=np.float64), \
+           np.concatenate(engine_ids, dtype=np.float64), \
+           np.concatenate(labels, dtype=np.float64)
 
 
 def get_data(path: str, subset: Subset, window_size: int, slide_step: int = 1, sensors: list = None,
@@ -318,16 +318,16 @@ def plot_sensor_data(path: str, engine_id: int, subset: Subset, sensors: list = 
 
 if __name__ == '__main__':
     train1, test1, val1, scaler = get_data(DEFAULT_ROOT,
-                                           Subset.FD001,
-                                           window_size=32,
+                                           Subset.FD002,
+                                           window_size=40,
                                            slide_step=1,
                                            sensors=DEFAULT_SENSORS,
                                            rul_threshold=0,
                                            label_norm=True,
                                            scaler=pre.MinMaxScaler(),
                                            val_ratio=0.1)
-    sampler = CmapssNegativeSampler(train1, 1, 4)
-    loader = torch.utils.data.DataLoader(train1, 32, True)
+    sampler = CmapssNegativeSampler(train1, 1, 1)
+    loader = torch.utils.data.DataLoader(train1, 40, True)
     for _, (x, y) in enumerate(loader):
         print(x.shape)
         print(y.shape)

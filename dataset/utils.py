@@ -1,3 +1,6 @@
+import numpy as np
+import sklearn.metrics as me
+
 from torch.utils.data import Dataset
 
 
@@ -21,3 +24,18 @@ class Sampler:
 
     def sample(self, index: int):
         raise NotImplementedError("You must define the Sampler.sample(index) method.")
+
+
+def compute_metrics(path):
+    out = np.load(path+r"/model_test_output_part1.npy")
+    label = np.load(path+r"/model_test_labels_part1.npy")
+    mse = me.mean_squared_error(out, label)
+    mape = me.mean_absolute_percentage_error(out, label)
+    print("MSE:{}".format(mse))
+    print("MAPE:{}".format(mape))
+    print("R2:{}".format(me.r2_score(out, label)))
+    return (out, label), mse, mape
+
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)

@@ -4,6 +4,7 @@ import os
 import numpy as np
 import pandas as pd
 from torch.utils.data import Dataset
+from dataset.utils import Sampler
 
 
 class Condition(Enum):
@@ -33,16 +34,13 @@ def get_labels(XJTU_path: str,
         and the second bearing in third condition are not provided in the paper,
         thus both of them can not use when using "piecewise" type labels.
     :param XJTU_path: The root path of XJTU dataset in the disk. i.e. "../XJTU/XJTU-SY_Bearing_Datasets"
-    :param condition: A list of Condition enum. i.e. [Condition.OP_A, Condition.OP_B, Condition.OP_C]
-    :param bearing_index: A 2-dimension list corresponding to variable condition. i.e. [[1,2,3], [1,2,3,4], [1,3,4]]
-    :param start: It illustrates the start indexes of the .csv file in the given bearing to read,
-            so it has the same shape with parameter bearing_indexes, and the elements in it start from 1.
-    :param end: Like start_tokens.
-            If 0, the number of the last Start files will be read, if -1, equals to the last index.
+    :param condition: A Condition enum. i.e. Condition.OP_A.
+    :param bearing_index: An integer represent the bearing in the condition determined by param condition.
+    :param start: It illustrates the start index of the .csv files in the given bearing to read,
+        and the elements in it start from 1.
+    :param end: Like start. If 0, the number of the last Start files will be read, if -1, equals to the last index.
     :param labels_type: A LabelsType illustrating the type of getting data.
-    :return: A 3-dimension list storing RUL value of every .csv file.
-            i.e. labels[a][b][c], a in [0, 1, 2] is number of conditions from 0,
-            b in [0, 1, 2, 3, 4] is the number of 5 bearings from 0, c is the name of .csv files minus 1.
+    :return: A list containing RUL value of chose .csv files.
     """
     FPTs = [[77, 31, 58, None, 34], [454, 46, 314, 30, 120], [2376, None, 340, 1416, 6]]
 
@@ -147,7 +145,7 @@ def check_degradation_point(condition: Condition,
     plt.show(block=True)
 
 
-class XJTU_Dataset(Dataset):
+class XJTU(Dataset):
     def __init__(self,
                  XJTU_path: str,
                  condition: list,
@@ -195,6 +193,9 @@ class XJTU_Dataset(Dataset):
         self.threads = []
         self.raw_data = []
         self.labels = []
+        # 用于记录每个独立的轴承在raw_data整体样本中的开始与结束下标，采样时即可通过该数组得知所采样本的来源轴承
+        self.bearing_split_index = []
+
         for con in range(len(condition)):
             for bearing_index in range(len(bearing_indexes[con])):
                 start = start_tokens[con][bearing_index]
@@ -210,29 +211,45 @@ class XJTU_Dataset(Dataset):
         for thread in self.threads:
             thread.join()
         for thread in self.threads:
-            self.raw_data.append(thread.get_result()[0])
+            temp_data = thread.get_result()[0]
+            last_index = self.bearing_split_index[-1] if len(self.bearing_split_index) > 0 else 0
+            self.bearing_split_index.append(last_index + len(temp_data))
+            self.raw_data.append(temp_data)
             self.labels.extend(thread.get_result()[1])
+        print(self.bearing_split_index)
         self.raw_data = np.concatenate(self.raw_data)
         self.window_size = window_size
         self.step_size = step_size
         self.class_num = class_num
-        print("Finishing reading data, processing time：{:.4f}s".format(time.time()-time0))
+        self.label_skip = self.raw_data.shape[0] // len(self.labels)  # How long a label represents the data stamp.
+        self.sample_num = (self.label_skip - self.window_size) // self.step_size + 1  # How many samples in one csv.
+        print("Finishing reading data, processing time：{:.4f}s".format(time.time() - time0))
+        self.__sampler = None
 
     def __getitem__(self, index):
-        bearing_index = self.step_size * index
-        label_skip = self.raw_data.shape[0] // len(self.labels)  # How long a label represents the data stamp.
-        label_index = bearing_index // label_skip
-        if self.labels_type == LabelsType.TYPE_C:
-            label = np.zeros(self.class_num)
-            for i in self.labels[label_index]:
-                label[i] = 1
-            return self.raw_data[bearing_index: bearing_index + self.window_size], label
+        if self.__sampler is None:
+            begin = self.get_sample_index(index)
+            if self.labels_type == LabelsType.TYPE_C:
+                label = np.zeros(self.class_num)
+                for i in self.labels[begin // self.label_skip]:
+                    label[i] = 1
+                return self.raw_data[begin: begin + self.window_size], label
+            else:
+                self.labels = np.array(self.labels)
+                return self.raw_data[begin: begin + self.window_size], \
+                       self.labels[begin // self.label_skip]
         else:
-            return self.raw_data[bearing_index: bearing_index + self.window_size], \
-                self.labels[(bearing_index + self.window_size) // label_skip]
+            return self.__sampler.sample(index)
 
     def __len__(self):
-        return (self.raw_data.shape[0] - self.window_size) // self.step_size + 1
+        return self.sample_num * len(self.labels)
+
+    def get_sample_index(self, index):
+        return (index // self.sample_num) * self.label_skip + \
+               (index % self.sample_num) * self.step_size
+
+    def set_sampler(self, sampler: Sampler):
+        self.__sampler = sampler
 
     class ReaderThread(Thread):
         def __init__(self, path, condition, bearing_index, start, end, labels_type):
@@ -256,30 +273,84 @@ class XJTU_Dataset(Dataset):
                                               self.endToken)
             self.label = get_labels(self.path, self.condition, self.bearing_index, self.startToken,
                                     self.endToken, self.labels_type)
-            print(self.raw_data.shape)
-            print(len(self.label))
+            print(self.name + " for : {} [{}], from {} to {} is done.".format(self.condition, self.bearing_index,
+                                                                              self.startToken, self.endToken))
 
         def get_result(self):
             return self.raw_data, self.label
 
 
+class XJTURegressionNegativeSampler(Sampler):
+    def __init__(self, dataset: XJTU, neg_num):
+        super(XJTURegressionNegativeSampler, self).__init__(dataset)
+        self.dataset = dataset
+        dataset.set_sampler(self)
+        self.bearing_split_index = dataset.bearing_split_index
+        self.neg_num = neg_num
+
+    def sample(self, index: int):
+        start, end = self.get_index_range(index)
+        indexes = self.get_random_index(start, end, index)
+        # print(indexes)
+        samples = []
+        labels = []
+        for i in indexes:
+            samples.append(self.dataset.raw_data[i:i+self.dataset.window_size])
+            labels.append(self.dataset.labels[i // self.dataset.label_skip])
+        return np.stack(samples, axis=1), np.concatenate(labels)
+
+    def get_index_range(self, index):
+        """
+        返回index所在轴承数据的起始位置
+
+        :param index: 原始的采样下标（在dataset[index]调用时的index下标）
+        :return: start, end
+        """
+        index = self.dataset.get_sample_index(index)  # 转换到真实的raw采样点
+        for i in range(len(self.bearing_split_index)):
+            if index < self.bearing_split_index[i]:
+                return 0 if i == 0 else self.bearing_split_index[i - 1], self.bearing_split_index[i] - 1
+        raise ValueError(f"{index} is out of range.")
+
+    def get_random_index(self, start, end, index):
+        """
+        Return num samples from start to end without index
+
+        :param start:
+        :param end:
+        :param num:
+        :param index:
+        :return: list: [num of indexes]
+        """
+        index = self.dataset.get_sample_index(index)
+        interval_length = (end - start) // self.neg_num
+        neg_index = []
+        for i in range(self.neg_num):
+            s = start + i * interval_length
+            e = s + interval_length if i != self.neg_num - 1 else end
+            if s <= index < e:  # index所在的区间不采样
+                continue
+            ri = np.random.choice(range(s, e), 1)
+            neg_index.extend(ri)
+        result = [index]
+        result.extend(neg_index)
+        return result
+
+
 if __name__ == '__main__':
-    test_path = r"/home/dell/chuyuxin/Recurrent/re1/test_files"
-    DEFAULT_ROOT = r"/home/dell/chuyuxin/Recurrent/re1/XJTU/XJTU-SY_Bearing_Datasets"
+    # test_path = r"/home/dell/chuyuxin/Recurrent/re1/test_files"
+    DEFAULT_ROOT = r"/home/fuen/DeepLearningProjects/FaultdiagnosisDataset/XJTU/XJTU-SY_Bearing_Datasets"
     conditions = [Condition.OP_A, Condition.OP_B]
     train_bearings = [[1, 2, 3, 5], [1, 2, 3, 4]]
     train_start = [[1, 1, 1, 1], [1, 1, 1, 1]]
     train_end = [[-1, -1, -1, -1], [-1, -1, -1, -1]]
-    test_conditions = [Condition.OP_A, Condition.OP_C]
-    test_bearings = [[5], [1]]
+    test_conditions = [Condition.OP_A, Condition.OP_B]
+    test_bearings = [[5], [5]]
     test_start = [[1], [1]]
     test_end = [[-1], [-1]]
     window_size, step_size = 8192, 1024
-    # train_set = XJTU_Dataset(DEFAULT_ROOT, conditions, train_bearings, train_start, train_end, LabelsType.TYPE_C)
-    train_set = XJTU_Dataset(DEFAULT_ROOT, conditions, train_bearings, train_start, train_end, LabelsType.TYPE_R,
-                             window_size=window_size, step_size=step_size)
-    # test_set = XJTU_Dataset(DEFAULT_ROOT, conditions, test_bearings, test_start, test_end, LabelsType.TYPE_C,
+    train_set = XJTU(DEFAULT_ROOT, conditions, train_bearings, train_start, train_end, LabelsType.TYPE_P,
+                     window_size=window_size, step_size=step_size)
+    XJTURegressionNegativeSampler(train_set, 4)
+    # test_set = XJTU_Dataset(DEFAULT_ROOT, test_conditions, test_bearings, test_start, test_end, LabelsType.TYPE_C,
     #                         window_size=window_size, step_size=step_size)
-    # test_set = XJTU_Dataset(DEFAULT_ROOT, test_conditions, test_bearings, test_start, test_end, LabelsType.TYPE_P,
-    #                         window_size=window_size, step_size=step_size)
-    # labels = get_labels(DEFAULT_ROOT, Condition.OP_A, 1, 1, -1, LabelsType.TYPE_C)

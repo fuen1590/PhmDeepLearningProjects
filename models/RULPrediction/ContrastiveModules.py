@@ -1,7 +1,28 @@
 import torch
 import torch.nn as nn
-
+import matplotlib.pyplot as plt
+import sklearn.manifold as manifold
 from train.trainable import TrainableModule
+
+
+def pn_rul_compute(predictor, f_pos, f_neg):
+    """
+    Used to compute Rul of the positive and negative samples. Because the Weighted Info
+    NCE LOSS needs all the positive and negative rul to compute the final loss.
+
+    :param predictor: The predictor layer
+    :param f_pos: The positive samples with shape (batch, features)
+    :param f_neg: The negative samples with shape (batch, nums, features), where nums indicates
+                  the number of negative samples.
+    :return: All the rul with shape (batch, nums+1)
+    """
+    out_all = predictor(f_pos)
+    neg_nums = f_neg.shape[1]
+    neg_out = []
+    for neg_i in range(neg_nums):
+        neg_out.append(predictor(f_neg[:, neg_i]))
+    neg_out = torch.concat(neg_out, dim=-1)
+    return torch.concat([out_all, neg_out], dim=-1)
 
 
 class WeightedInfoNCELoss(nn.Module):
@@ -32,7 +53,7 @@ class WeightedInfoNCELoss(nn.Module):
         # pos_norm = torch.nn.functional.normalize(pos, dim=-1)
         # neg_norm = torch.nn.functional.normalize(neg, dim=-1)
         pos_sim = torch.cosine_similarity(x, pos, dim=2)  # positive samples similarity (batch, num_p)
-        neg_sim = torch.cosine_similarity(x, neg, dim=2)  # positive samples similarity (batch, num_n)
+        neg_sim = torch.cosine_similarity(x, neg, dim=2)  # negative samples similarity (batch, num_n)
         if neg_weight is not None:
             neg_sim = torch.mul(neg_sim, neg_weight)
         nominator = torch.exp((torch.div(pos_sim, self.temperature)))  # (batch, num_p)
@@ -57,7 +78,9 @@ class MSEContrastiveLoss(nn.Module):
 
     def forward(self, predict, label, x=None, pos=None, neg=None, neg_weight=None):
         if x is not None and pos is not None and neg is not None:
-            loss = self.mse(predict, label[:, 0:1]) + self.contrastive(x, pos, neg, neg_weight)
+            # print(f"MSE:{self.mse(predict, label)}")
+            # print(f"Contra:{self.contrastive(x, pos, neg, neg_weight)}")
+            loss = self.mse(predict, label) + self.contrastive(x, pos, neg, neg_weight)
         else:
             loss = self.mse(predict, label)
         return loss
@@ -88,6 +111,14 @@ class TripletLoss(nn.Module):
 
 
 class ContrastiveModel(TrainableModule):
+    def __init__(self, label_norm, model_flag, device):
+        super(ContrastiveModel, self).__init__(model_flag=model_flag, device=device)
+        self.tsne = None
+        self.visual_samples = None
+        self.embedding = []
+        self.epoch_num = 0
+        self.label_norm = label_norm
+
     def compute_loss(self,
                      x: torch.Tensor,
                      label: torch.Tensor,
@@ -113,19 +144,37 @@ class ContrastiveModel(TrainableModule):
         :return: feature_pos, feature_pos_aug, feature_neg, neg_weights
         """
         assert len(x.shape) == 4
+        assert labels is not None
         batch, num, w, f = x.shape
 
-        x_ = x.view(batch*num, w, f)
+        x_ = x.view(batch * num, w, f)
         pos = x[:, 0, :, :]
         mask = torch.zeros_like(pos).uniform_(0, 1)  # random drop features from x to get augment samples. (30%)
         mask = torch.where(mask < 0.7, 1, 0).to(self.device)
         pos_aug = mask * pos
-        features = self.feature_extractor(x_)
+        all_features = self.feature_extractor(x_)
         feature_pos_aug = self.feature_extractor(pos_aug)
-        features = features.view(batch, num, -1)
+        features = all_features.view(batch, num, -1)
         feature_pos = features[:, 0]
         feature_neg = features[:, 1:]
-        neg_weights = torch.abs(labels[:, 1:] - labels[:, 0:1])
+        neg_weights = (torch.abs(labels[:, 1:] - labels[:, 0:1])/(1 if self.label_norm else 125)) * 2
+
+        # assert len(x.shape) == 4
+        # batch, num, w, f = x.shape
+        # pos = x[:, 0, :, :]  # (batch, w, f)
+        # neg = x[:, 1:, :, :]  # (batch, num_n, w, f)
+        # # mask = torch.zeros_like(pos).uniform_(0, 1)  # random drop features from x to get augment samples. (30%)
+        # # mask = torch.where(mask < 0.7, 1, 0).to(self.device)
+        # mask = torch.randn_like(pos)  # random noise
+        # pos_aug = mask + pos
+        # feature_pos = self.feature_extractor(pos)
+        # feature_neg = [0] * (num - 1)
+        # for i in range(num - 1):
+        #     feature_neg[i] = self.feature_extractor(neg[:, i, :, :])
+        # feature_neg = torch.stack(feature_neg, dim=1)
+        # feature_pos_aug = self.feature_extractor(pos_aug)
+        # neg_weights = torch.abs(labels[:, 1:] - labels[:, 0:1]) * 2
+
         return feature_pos, feature_pos_aug, feature_neg, neg_weights
 
     def feature_extractor(self, x):
@@ -141,3 +190,60 @@ class ContrastiveModel(TrainableModule):
         :return: tensors of feature
         """
         raise NotImplementedError("The feature_extractor method must be implemented.")
+
+    def forward(self, x, label=None):
+        """
+        The forward method in contrastive models must have two parts: the one is normal
+        forward process, and the other one is forward process with negative samples.
+
+        Base Implamentation
+        ----
+
+        >>> if len(x.shape) < 4  # the normal forward, default shape with (b, l, f)
+        >>>     x = self.feature_extractor(x)
+        >>>     return self.predictor(x)
+        >>> else:  # the forward with negative samples, default shape with (b, num, l, f)
+        >>>     f_pos, f_apos, f_neg, w = self.generate_contrastive_samples(x, label)
+        >>>     return pn_rul_compute(self.predictor, f_pos, f_neg), f_pos, f_apos, f_neg, w
+        :return: rul, f_pos, f_apos, f_neg, w
+        """
+        raise NotImplementedError("The forward method must be implemented.")
+
+    def set_visual_samples(self, samples):
+        """
+        Sets the visualization samples used in epoch_start.
+
+        :param samples: (batch, len, features)
+        :return:
+        """
+        self.visual_samples = samples
+        self.tsne = manifold.TSNE(n_components=2, random_state=2023)
+
+    def epoch_start(self):
+        if self.visual_samples is not None:
+            print("Visualizing samples processing...")
+            features = self.feature_extractor(self.visual_samples)
+            features = features.cpu().detach().numpy().squeeze()
+            embedding = self.tsne.fit_transform(features)
+            self.embedding.append(embedding)
+            # plt.figure(dpi=600)
+            # plt.scatter(embedding[:, 0], embedding[:, 1], c=plt.cm.Spectral(range(len(embedding))))
+            # plt.title("Epoch:{}".format(self.epoch_num))
+            # plt.savefig(self.get_model_result_path()+"visual_embedding_{}.png".format(self.epoch_num))
+            self.epoch_num += 1
+        else:
+            print("Visualizing samples is None, ignored.")
+
+    def train_end(self):
+        plt.figure(dpi=600)
+        plt.title("Total")
+        index = 0
+        emd_index = [0, len(self.embedding) // 2, len(self.embedding) - 1]
+        for i in emd_index:
+            plt.scatter(self.embedding[i][:, 0], self.embedding[i][:, 1],
+                        c=plt.cm.tab20(index),
+                        edgecolors=plt.cm.Wistia(range(len(self.embedding[i][:, 0]))),
+                        label="epoch: {}".format(i))
+            index += 1
+        plt.legend()
+        plt.savefig(self.get_model_result_path() + "total_embedding.png")

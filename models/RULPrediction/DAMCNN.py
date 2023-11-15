@@ -107,9 +107,10 @@ class PRED(nn.Module):
         return x
 
 
-class model(ContrastiveModel):
-    def __init__(self, window_size, features, model_flag="Model"):
-        super().__init__(model_flag=model_flag)
+class DAMCNN(ContrastiveModel):
+    def __init__(self, window_size, features,
+                 label_norm=False, model_flag="Model", device="cuda:0"):
+        super().__init__(model_flag=model_flag, device=device, label_norm=label_norm)
         self.cbam = CBAM(window_size=window_size, features=features)
         self.mscnn = MSCNN(window_size=window_size, features=features)
         self.conv1 = nn.Sequential(nn.Conv1d(32, 32, 3, 1, 1),
@@ -127,32 +128,49 @@ class model(ContrastiveModel):
                                    nn.ReLU(),
                                    nn.AvgPool1d(2, 2))
         self.conv = nn.Conv2d(64, 1, 1)
-        self.pred = PRED()
-        self.to("cuda")
+        # prediction layers
+        self.conv_2 = nn.Conv2d(64, 1, 1)
+        self.lstm_2 = nn.LSTM(1, 32, batch_first=True)
+        self.dense = nn.Linear(32, 1)
+        self.to(device)
 
     def forward(self, x, label=None):
         if len(x.shape) < 4:
             feature = self.feature_extractor(x)
-            out = self.pred(feature)  # (N, 1)
+            out = self.dense(feature)  # (N, 1)
             return out
         else:
             assert label is not None
             pos, pos_aug, neg, weights = self.generate_contrastive_samples(x, label)
-            return pos, pos_aug, neg, weights
+            out_all = self.dense(pos)
+            neg_nums = neg.shape[1]
+            neg_out = []
+            for neg_i in range(neg_nums):
+                neg_out.append(self.dense(neg[:, neg_i]))
+            neg_out = torch.concat(neg_out, dim=-1)
+            return torch.concat([out_all, neg_out], dim=-1), pos, pos_aug, neg, weights
 
     def feature_extractor(self, x):
-        x = torch.unsqueeze(x, -2)
-        x = self.cbam(x)  # (N, 8192, 1, 2)
-        x = self.mscnn(x)  # (N, 32, 512)
-        x = self.conv1(x)  # (N, 32, 256)
-        x = self.conv2(x)  # (N, 64, 128)
-        x = x.unsqueeze(2)
-        return x
+            x = torch.unsqueeze(x, -2)
+            x = self.cbam(x)  # (N, 8192, 1, 2)
+            x = self.mscnn(x)  # (N, 32, 512)
+            x = self.conv1(x)  # (N, 32, 256)
+            x = self.conv2(x)  # (N, 64, 128)
+            x = x.unsqueeze(2)
+
+            x = self.conv_2(x)  # (N, 1, 1, 128)
+            x = x.contiguous().view(x.size(0), -1, 1)
+            x, _ = self.lstm_2(x)
+            x = x[:, -1, :].contiguous().view(x.size(0), -1)
+            return x
+
+    def epoch_start(self):
+        super(DAMCNN, self).epoch_start()
 
 
 if __name__ == '__main__':
     N = 4
-    x = torch.randn(N, 60, 14).to("cpu")
-    model_ex = model(60, 14).to("cpu")
+    x = torch.randn(N, 40, 14).to("cpu")
+    model_ex = DAMCNN(40, 14).to("cpu")
     y = model_ex(x)
     print(y.shape)

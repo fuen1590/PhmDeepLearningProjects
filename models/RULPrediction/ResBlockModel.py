@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-
-import matplotlib.pyplot as plt
-import sklearn.manifold as manifold
+from sklearn import manifold
 
 import dataset.cmapss as cmapss
 from models.RULPrediction.ContrastiveModules import ContrastiveModel, MSEContrastiveLoss
@@ -89,48 +87,22 @@ class ResNet(ContrastiveModel):
         self.visual_samples = torch.transpose(self.visual_samples, -1, -2)
         self.tsne = manifold.TSNE(n_components=2, random_state=2023)
 
-    def epoch_start(self):
-        if self.visual_samples is not None:
-            print("Visualizing samples processing...")
-            features = self.feature_extractor(self.visual_samples)
-            features = features.cpu().detach().numpy()
-            embedding = self.tsne.fit_transform(features)
-            self.embedding.append(embedding)
-            # plt.figure(dpi=600)
-            # plt.scatter(embedding[:, 0], embedding[:, 1], c=plt.cm.Spectral(range(len(embedding))))
-            # plt.title("Epoch:{}".format(self.epoch_num))
-            # plt.savefig(self.get_model_result_path()+"visual_embedding_{}.png".format(self.epoch_num))
-            self.epoch_num += 1
-        else:
-            print("Visualizing samples is None, ignored.")
-
-    def train_end(self):
-        plt.figure(dpi=600)
-        plt.title("Total")
-        index = 0
-        emd_index = [0, len(self.embedding)//2, len(self.embedding)-1]
-        for i in emd_index:
-            plt.scatter(self.embedding[i][:, 0], self.embedding[i][:, 1],
-                        c=plt.cm.tab20(index),
-                        edgecolors=plt.cm.Wistia(range(len(self.embedding[i][:, 0]))),
-                        label="epoch: {}".format(i))
-            index+=1
-        plt.legend()
-        plt.savefig(self.get_model_result_path() + "total_embedding.png")
-
 
 if __name__ == '__main__':
-    window_size = 32
-    batch_size = 256
+    window_size = 16
     threshold = 125
-    neg_samples = 3
-    subset = cmapss.Subset.FD004
-    model_flag = "RUL-ContrastiveResNet-BatchNorm-w{}-batch{}-thresh{}-{}-neg{}-dim64-Contra-3". \
+    neg_samples = 4
+    batch_size = 256 // (neg_samples-1)
+    # batch_size = 256
+    subset = cmapss.Subset.FD001
+    Loss = "InfoNCE"
+    model_flag = "RUL-ContrastiveResNet-w{}-batch{}-thresh{}-{}-neg{}-dim64-{}-1-Theta". \
         format(window_size,
                batch_size,
                threshold,
                subset.value,
-               neg_samples)
+               neg_samples-1,
+               Loss)
     train, test, val, scalar = cmapss.get_data(cmapss.DEFAULT_ROOT,
                                                subset,
                                                window_size=window_size,
@@ -138,18 +110,18 @@ if __name__ == '__main__':
                                                sensors=cmapss.DEFAULT_SENSORS,
                                                rul_threshold=threshold,
                                                label_norm=True,
-                                               val_ratio=0.3)
+                                               val_ratio=0.2)
     net = ResNet(in_features=len(cmapss.DEFAULT_SENSORS), window_size=window_size, model_flag=model_flag,
-                 device="cuda:0")
-    visual_samples = torch.tensor(train.data[np.where(train.ids == 1)], dtype=torch.float32).to("cuda:0")
+                 device="cuda:1")
+    visual_samples = torch.tensor(train.data[np.where(train.ids == 1)], dtype=torch.float32).to("cuda:1")
     net.set_visual_samples(visual_samples)
-    sampler = cmapss.CmapssNegativeSampler(train, neg_nums=neg_samples)
-    net.prepare_data(train, test, val, batch_size=batch_size, num_workers=0, eval_shuffle=False)
+    sampler = cmapss.CmapssNegativeSampler(train, 1, neg_samples)
+    net.prepare_data(train, test, val, batch_size=batch_size, num_workers=1, eval_shuffle=False)
     net.train_model(epoch=100,
                     lr=1e-3,
-                    criterion=MSEContrastiveLoss(),
+                    # criterion=nn.MSELoss(),
+                    criterion=MSEContrastiveLoss(contrastive=Loss),
                     optimizer="adam",
                     lr_lambda=lambda x: 10 ** -(x // 15),
-                    early_stop=5,
+                    early_stop=10,
                     show_batch_loss=False)
-    import sklearn.metrics as m
