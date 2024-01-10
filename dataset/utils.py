@@ -39,3 +39,10 @@ def compute_metrics(path):
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def gaussian_distribution(x: int or np.ndarray, mean, std):
+    l1 = 1/((2*np.pi)**0.5 * std)
+    l2 = np.exp(-((x-mean)**2)/(2*std**2))
+    return l1*l2
+

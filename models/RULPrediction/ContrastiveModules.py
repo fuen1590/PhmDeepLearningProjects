@@ -3,6 +3,7 @@ import torch.nn as nn
 import matplotlib.pyplot as plt
 import sklearn.manifold as manifold
 from train.trainable import TrainableModule
+from functools import wraps
 
 
 def pn_rul_compute(predictor, f_pos, f_neg):
@@ -49,9 +50,6 @@ class WeightedInfoNCELoss(nn.Module):
         if len(neg.shape) > 2:
             neg = torch.flatten(neg, 2)  # (batch, num_n, feature)
         x = x.unsqueeze(dim=1)  # (batch, 1, feature)
-        # x_norm = torch.nn.functional.normalize(x, dim=-1)
-        # pos_norm = torch.nn.functional.normalize(pos, dim=-1)
-        # neg_norm = torch.nn.functional.normalize(neg, dim=-1)
         pos_sim = torch.cosine_similarity(x, pos, dim=2)  # positive samples similarity (batch, num_p)
         neg_sim = torch.cosine_similarity(x, neg, dim=2)  # negative samples similarity (batch, num_n)
         if neg_weight is not None:
@@ -149,15 +147,17 @@ class ContrastiveModel(TrainableModule):
 
         x_ = x.view(batch * num, w, f)
         pos = x[:, 0, :, :]
-        mask = torch.zeros_like(pos).uniform_(0, 1)  # random drop features from x to get augment samples. (30%)
-        mask = torch.where(mask < 0.7, 1, 0).to(self.device)
-        pos_aug = mask * pos
+        # mask = torch.zeros_like(pos).uniform_(0, 1)  # random drop features from x to get augment samples. (30%)
+        # mask = torch.where(mask < 0.7, 1, 0).to(self.device)
+        # pos_aug = mask * pos
+        mask = torch.normal(0, 0.15, (batch, w, f), device=pos.device)  # random noise
+        pos_aug = mask + pos
         all_features = self.feature_extractor(x_)
         feature_pos_aug = self.feature_extractor(pos_aug)
         features = all_features.view(batch, num, -1)
         feature_pos = features[:, 0]
         feature_neg = features[:, 1:]
-        neg_weights = (torch.abs(labels[:, 1:] - labels[:, 0:1])/(1 if self.label_norm else 125)) * 2
+        neg_weights = torch.abs(labels[:, 1:] - labels[:, 0:1]) * 2
 
         # assert len(x.shape) == 4
         # batch, num, w, f = x.shape
@@ -199,7 +199,7 @@ class ContrastiveModel(TrainableModule):
         Base Implamentation
         ----
 
-        >>> if len(x.shape) < 4  # the normal forward, default shape with (b, l, f)
+        >>> if len(x.shape) < 4:  # the normal forward, default shape with (b, l, f)
         >>>     x = self.feature_extractor(x)
         >>>     return self.predictor(x)
         >>> else:  # the forward with negative samples, default shape with (b, num, l, f)
@@ -247,3 +247,4 @@ class ContrastiveModel(TrainableModule):
             index += 1
         plt.legend()
         plt.savefig(self.get_model_result_path() + "total_embedding.png")
+

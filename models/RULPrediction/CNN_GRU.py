@@ -14,10 +14,17 @@ class CnnGru(ContrastiveModel):
     def __init__(self,
                  in_features,
                  window_size,
+                 filter_size,
                  label_norm=False,
                  model_flag="CnnGru",
-                 device="cuda"):
-        super(CnnGru, self).__init__(model_flag, device=device, label_norm=label_norm)
+                 device="cuda",):
+        super(CnnGru, self).__init__(model_flag=model_flag, device=device, label_norm=label_norm)
+        if filter_size > 0:
+            window_size = window_size // filter_size
+            self.MaV = nn.AvgPool1d(kernel_size=filter_size, stride=filter_size)
+        else:
+            window_size = window_size
+            self.MaV = None
         self.convs = nn.Sequential(
             nn.Conv1d(in_channels=window_size, out_channels=16, kernel_size=10, stride=1, padding="same"),
             nn.ReLU(),
@@ -61,6 +68,10 @@ class CnnGru(ContrastiveModel):
     def feature_extractor(self, x):
         # x.shape = (batch, length, features)
         # batch, l, f = x.shape
+        if self.MaV:
+            print(x.shape)
+            x = self.MaV(x.transpose(-1, -2)).transpose(-1, -2)
+            print(x.shape)
         x_conv = x
         x_conv = self.convs(x_conv)
         _, x_grus = self.grus(x)  # (batch, length, 256)
@@ -96,7 +107,7 @@ if __name__ == '__main__':
     net = CnnGru(len(cmapss.DEFAULT_SENSORS), window_size, model_flag, device="cuda:1")
     visual_samples = torch.tensor(train.data[np.where(train.ids == 1)], dtype=torch.float32, device="cuda:1")
     net.set_visual_samples(visual_samples)
-    sampler = cmapss.CmapssNegativeSampler(train, engine_num=1, interval_num=neg_num)
+    sampler = cmapss.CmapssPiecewiseNegativeSampler(train, engine_num=1, interval_num=neg_num)
     # sampler = cmapss.CmapssRandomNegtiveSampler(train, neg_num=neg_num, sample_thresh=0.05)
     net.prepare_data(train, test, val, batch_size=batch_size, num_workers=2)
     net.train_model(epoch=100,

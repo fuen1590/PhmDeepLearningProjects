@@ -8,7 +8,7 @@ import sklearn.preprocessing as pre
 import torch.utils.data
 from torch.utils.data import Dataset
 from enum import Enum
-from dataset.utils import Sampler
+from dataset.utils import Sampler, gaussian_distribution
 
 DEFAULT_ROOT = r"/home/fuen/DeepLearningProjects/FaultdiagnosisDataset/" \
                r"IEEE PHM 2008涡轮风扇发动机退化仿真数据集CMAPSSData.zip/data/"
@@ -53,7 +53,7 @@ class Cmapss(Dataset):
         if self.__sampler is not None:
             return self.__sampler.sample(item)
         else:
-            return self.data[item], self.labels[item:item+1]
+            return self.data[item], self.labels[item:item + 1]
 
     def __len__(self):
         return self.data.shape[0]
@@ -68,7 +68,7 @@ class Cmapss(Dataset):
         pass
 
 
-class CmapssNegativeSampler(Sampler):
+class CmapssPiecewiseNegativeSampler(Sampler):
     """
     A Sampler used to construct a negative-positive pair to train a Contrastive Neural Network
     """
@@ -80,7 +80,7 @@ class CmapssNegativeSampler(Sampler):
         :param interval_num: The number of split intervals for one engine.This argument indicates the number of
                              negative samples.
         """
-        super(CmapssNegativeSampler, self).__init__(dataset)
+        super(CmapssPiecewiseNegativeSampler, self).__init__(dataset)
         dataset.set_sampler(self)
         self.ids = dataset.ids
         self.data = dataset.data
@@ -122,6 +122,49 @@ class CmapssNegativeSampler(Sampler):
         return np.stack(neg_samples), np.array(neg_labels)
 
 
+class CmapssGaussianNegativeSampler(Sampler):
+    def __init__(self, dataset: Cmapss, neg_num=5, thresh=0.2, std=1.):
+        super(CmapssGaussianNegativeSampler, self).__init__(dataset)
+        dataset.set_sampler(self)
+        self.neg_num = neg_num - 1
+        self.thresh = thresh
+        self.std = std
+        self.ids = dataset.ids
+        self.data = dataset.data
+        self.labels = dataset.labels
+        import matplotlib.pyplot as plt
+
+    def sample(self, index: int):
+        engine_id = self.ids[index]
+        sample_indexes = np.argwhere(self.ids == engine_id).squeeze()
+
+        # 确定采样点在高斯分布的[-4,4]区间内的位置，高斯分布的中心点将根据采样点变化
+        # 先将采样点转移到[0, 1]，再通过*8-4转移到[-4, 4]区间内
+        sample_mean = (index - sample_indexes.min()) / (sample_indexes.max() - sample_indexes.min())
+        sample_mean = sample_mean * 8 - 4
+
+        # 去掉采样点周围Thresh个点不采样
+        thresh_up = index + self.thresh / 2 * len(sample_indexes)
+        thresh_down = index - self.thresh / 2 * len(sample_indexes)
+        cut_sample_indexes = np.concatenate([sample_indexes[sample_indexes < thresh_down],
+                                             sample_indexes[sample_indexes > thresh_up]])
+        length = len(cut_sample_indexes)  # final sample indexes
+        prob = gaussian_distribution(np.linspace(-4, 4, length), sample_mean, self.std)
+        prob = torch.softmax(torch.tensor(prob), dim=0).numpy()
+        results = np.random.choice(cut_sample_indexes, self.neg_num, replace=False, p=prob)
+        neg_samples = [self.data[i] for i in results]
+        neg_labels = [self.labels[i] for i in results]
+        # prob_all = np.zeros(len(sample_indexes))
+        # for i in range(len(cut_sample_indexes)):
+        #     prob_all[sample_indexes == cut_sample_indexes[i]] = prob[i]
+        # plt.title("index:{}".format(index))
+        # plt.plot(sample_indexes, prob_all)
+        # plt.scatter(results, np.zeros(len(results)), c="red")
+        # plt.grid()
+        # plt.show()
+        return np.stack(neg_samples), np.array(neg_labels)
+
+
 class CmapssRandomNegtiveSampler(Sampler):
     def __init__(self, dataset: Cmapss, neg_num=10, sample_thresh=0.2):
         super(CmapssRandomNegtiveSampler, self).__init__(dataset)
@@ -132,8 +175,8 @@ class CmapssRandomNegtiveSampler(Sampler):
         self.thresh = sample_thresh
 
     def sample(self, index: int):
-        indexes = np.squeeze(np.argwhere(np.abs(self.labels-self.labels[index]) > self.thresh))
-        indexes = np.random.choice(indexes, size=self.neg_num+1, replace=False)
+        indexes = np.squeeze(np.argwhere(np.abs(self.labels - self.labels[index]) > self.thresh))
+        indexes = np.random.choice(a=indexes, size=self.neg_num + 1, replace=False)
         indexes[0] = index
         return self.data[indexes], self.labels[indexes]
 
@@ -178,8 +221,8 @@ def generate_window_sample(df: pd.DataFrame, window_size, slide_step, sensors):
               RUL labels for every window samples]
     """
     engine_grouped = df.groupby(by="unit_nr")
-    result = [] # engine sensor data
-    engine_ids = [] # engine id
+    result = []  # engine sensor data
+    engine_ids = []  # engine id
     labels = []  # rul labels
     for _, engine in list(engine_grouped):
         data = engine[sensors].values  # shape = (n, f)
@@ -193,10 +236,10 @@ def generate_window_sample(df: pd.DataFrame, window_size, slide_step, sensors):
         rul = [0] * sample_nums  # temporal rul data. To correspond with each sample.
         engine_id = engine["unit_nr"].iloc[0]
         for j in range(len(s)):
-            s[j] = data[j*slide_step:j*slide_step + window_size]
+            s[j] = data[j * slide_step:j * slide_step + window_size]
             e[j] = engine_id
             rul[j] = engine["rul"].iloc[
-                j*slide_step + window_size - 1]  # The label is set to the last time stamp of the sample window.
+                j * slide_step + window_size - 1]  # The label is set to the last time stamp of the sample window.
         result.append(s)
         engine_ids.append(e)
         labels.append(rul)
@@ -255,6 +298,7 @@ def get_data(path: str, subset: Subset, window_size: int, slide_step: int = 1, s
     train, val = split_val_set(train, val_ratio)
     # normalization use train set (the normalization factors are all come from train set)
     assert isinstance(scaler, (pre.StandardScaler, pre.MinMaxScaler, pre.RobustScaler, pre.MaxAbsScaler))
+    sensors = sensor_names if sensors is None else sensors
     scaler.fit(train[sensors])
     train[sensors] = scaler.transform(train[sensors])
     test[sensors] = scaler.transform(test[sensors])
@@ -283,7 +327,11 @@ def split_val_set(train_set: pd.DataFrame, val_size=0.2):
     grouped = train_set.groupby(by="unit_nr")
     train_set_result = []
     val_set_result = []
+    np.random.seed(2023)
     val_index = np.random.choice(range(1, len(grouped) + 1), int(len(grouped) * val_size), replace=False)
+    if 1 in val_index:
+        val_index = np.delete(val_index, np.argwhere(val_index == 1))
+    print(f"val_index:{val_index}")
     for i in range(1, len(grouped) + 1):
         data = train_set[train_set["unit_nr"] == i]
         if i in val_index:
@@ -318,15 +366,15 @@ def plot_sensor_data(path: str, engine_id: int, subset: Subset, sensors: list = 
 
 if __name__ == '__main__':
     train1, test1, val1, scaler = get_data(DEFAULT_ROOT,
-                                           Subset.FD002,
+                                           Subset.FD004,
                                            window_size=40,
                                            slide_step=1,
-                                           sensors=DEFAULT_SENSORS,
+                                           sensors=None,
                                            rul_threshold=0,
                                            label_norm=True,
                                            scaler=pre.MinMaxScaler(),
                                            val_ratio=0.1)
-    sampler = CmapssNegativeSampler(train1, 1, 1)
+    sampler = CmapssGaussianNegativeSampler(train1, 5, std=0.3)
     loader = torch.utils.data.DataLoader(train1, 40, True)
     for _, (x, y) in enumerate(loader):
         print(x.shape)

@@ -7,6 +7,9 @@ from torch.utils.data import Dataset
 from dataset.utils import Sampler
 
 
+DEFAULT_ROOT = r"/home/fuen/DeepLearningProjects/FaultdiagnosisDataset/XJTU/XJTU-SY_Bearing_Datasets"
+
+
 class Condition(Enum):
     OP_A = "35Hz12kN"
     OP_B = "37.5Hz11kN"
@@ -42,7 +45,7 @@ def get_labels(XJTU_path: str,
     :param labels_type: A LabelsType illustrating the type of getting data.
     :return: A list containing RUL value of chose .csv files.
     """
-    FPTs = [[77, 31, 58, None, 34], [454, 46, 314, 30, 120], [2376, None, 340, 1416, 6]]
+    FPTs = [[77, 31, 58, 85, 34], [454, 46, 314, 30, 120], [2376, 1300, 340, 1416, 6]]
 
     OP_A = [[2], [2], [2], [3], [1, 2]]
     OP_A_fault_points = [73, 35, 108, 82, 36]
@@ -134,11 +137,12 @@ def read_bearing_data(XJTU_path: str,
 
 
 def check_degradation_point(condition: Condition,
-                            bearing_index: int):
+                            bearing_index: int,
+                            check_points: int):
     import matplotlib.pyplot as plt
-    start = 80
-    a = read_bearing_data(r"D:\Learning\FaultdiagnosisDataset\XJTU\XJTU-SY_Bearing_Datasets",
-                          Condition.OP_A, bearing_index=1, start=start, end=0)
+    start = check_points
+    a = read_bearing_data(DEFAULT_ROOT,
+                          condition, bearing_index=bearing_index, start=start, end=-1)
     plt.xticks(ticks=np.linspace(0, a.shape[0], start + 1), labels=np.linspace(1, start + 1, start + 1), rotation=60)
     plt.grid()
     plt.plot(a[:, 0])
@@ -280,9 +284,40 @@ class XJTU(Dataset):
             return self.raw_data, self.label
 
 
-class XJTURegressionNegativeSampler(Sampler):
+class XJTUScaler:
+    def __init__(self):
+        self.data_min = None
+        self.data_max = None
+
+    def fit_transform(self, dataset: XJTU):
+        """
+        A min-max normalizer is adopted to the dataset, the minimum and maximum values
+        are computed from this dataset and stored.
+
+        :param dataset: Target XJTU dataset.
+        """
+        self.data_min = np.min(dataset.raw_data, axis=0, keepdims=True)
+        self.data_max = np.max(dataset.raw_data, axis=0, keepdims=True)
+        dataset.raw_data = (dataset.raw_data - self.data_min) / (self.data_max - self.data_min)
+
+    def transform(self, dataset: XJTU):
+        """
+        A min-max normalizer is adopted to the dataset, the minimum and maximum values
+        are computed from this dataset only if ::fit_transform() is never called.
+
+        :param dataset: Target XJTU dataset.
+        """
+        if self.data_min is None and self.data_max is None:
+            data_min = np.min(dataset.raw_data, axis=0, keepdims=True)
+            data_max = np.max(dataset.raw_data, axis=0, keepdims=True)
+            dataset.raw_data = (dataset.raw_data - data_min) / (data_max - data_min)
+        else:
+            dataset.raw_data = (dataset.raw_data - self.data_min) / (self.data_max - self.data_min)
+
+
+class XJTURegressionPiecewiseNegativeSampler(Sampler):
     def __init__(self, dataset: XJTU, neg_num):
-        super(XJTURegressionNegativeSampler, self).__init__(dataset)
+        super(XJTURegressionPiecewiseNegativeSampler, self).__init__(dataset)
         self.dataset = dataset
         dataset.set_sampler(self)
         self.bearing_split_index = dataset.bearing_split_index
@@ -297,7 +332,8 @@ class XJTURegressionNegativeSampler(Sampler):
         for i in indexes:
             samples.append(self.dataset.raw_data[i:i+self.dataset.window_size])
             labels.append(self.dataset.labels[i // self.dataset.label_skip])
-        return np.stack(samples, axis=1), np.concatenate(labels)
+        # print(len(samples))
+        return np.stack(samples, axis=0), np.concatenate(labels)
 
     def get_index_range(self, index):
         """
@@ -318,7 +354,6 @@ class XJTURegressionNegativeSampler(Sampler):
 
         :param start:
         :param end:
-        :param num:
         :param index:
         :return: list: [num of indexes]
         """
@@ -330,8 +365,9 @@ class XJTURegressionNegativeSampler(Sampler):
             e = s + interval_length if i != self.neg_num - 1 else end
             if s <= index < e:  # index所在的区间不采样
                 continue
-            ri = np.random.choice(range(s, e), 1)
-            neg_index.extend(ri)
+            e -= self.dataset.window_size
+            ri = np.random.randint(s, e, 1)
+            neg_index.append(ri[0])
         result = [index]
         result.extend(neg_index)
         return result
@@ -340,17 +376,17 @@ class XJTURegressionNegativeSampler(Sampler):
 if __name__ == '__main__':
     # test_path = r"/home/dell/chuyuxin/Recurrent/re1/test_files"
     DEFAULT_ROOT = r"/home/fuen/DeepLearningProjects/FaultdiagnosisDataset/XJTU/XJTU-SY_Bearing_Datasets"
-    conditions = [Condition.OP_A, Condition.OP_B]
-    train_bearings = [[1, 2, 3, 5], [1, 2, 3, 4]]
-    train_start = [[1, 1, 1, 1], [1, 1, 1, 1]]
-    train_end = [[-1, -1, -1, -1], [-1, -1, -1, -1]]
-    test_conditions = [Condition.OP_A, Condition.OP_B]
-    test_bearings = [[5], [5]]
-    test_start = [[1], [1]]
-    test_end = [[-1], [-1]]
+    conditions = [Condition.OP_A]
+    train_bearings = [[1, 2, 3]]
+    train_start = [[1, 1, 1]]
+    train_end = [[-1, -1, -1]]
+    # test_conditions = [Condition.OP_A, Condition.OP_B]
+    # test_bearings = [[5], [5]]
+    # test_start = [[1], [1]]
+    # test_end = [[-1], [-1]]
     window_size, step_size = 8192, 1024
     train_set = XJTU(DEFAULT_ROOT, conditions, train_bearings, train_start, train_end, LabelsType.TYPE_P,
                      window_size=window_size, step_size=step_size)
-    XJTURegressionNegativeSampler(train_set, 4)
+    XJTURegressionPiecewiseNegativeSampler(train_set, 4)
     # test_set = XJTU_Dataset(DEFAULT_ROOT, test_conditions, test_bearings, test_start, test_end, LabelsType.TYPE_C,
     #                         window_size=window_size, step_size=step_size)

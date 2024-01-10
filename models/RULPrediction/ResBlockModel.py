@@ -4,44 +4,43 @@ import numpy as np
 from sklearn import manifold
 
 import dataset.cmapss as cmapss
-from models.RULPrediction.ContrastiveModules import ContrastiveModel, MSEContrastiveLoss
+from models.RULPrediction.ContrastiveModules import ContrastiveModel, MSEContrastiveLoss, pn_rul_compute
 
 
 class ResNet(ContrastiveModel):
     def __init__(self, in_features, window_size,
                  model_flag="ContrastiveResNet", device="cuda"):
-        super(ResNet, self).__init__(model_flag=model_flag, device=device)
+        super(ResNet, self).__init__(model_flag=model_flag, device=device, label_norm=True)
+        # if window_size > 1000:
+        #     window_size = window_size // 32
+        #     self.MaV = nn.AvgPool1d(kernel_size=32, stride=32)
+        # else:
+        #     window_size = window_size
+        #     self.MaV = None
         self.tsne = None
         self.visual_samples = None
         self.embedding = []
         self.epoch_num = 0
         self.conv = nn.Conv1d(in_channels=in_features, out_channels=64, kernel_size=3, stride=1, padding=1)
         self.norm1 = nn.BatchNorm1d(64)
+        self.norm2 = nn.BatchNorm1d(128)
+        self.norm3 = nn.BatchNorm1d(128)
         self.res1 = nn.Sequential(
             nn.Conv1d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Conv1d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(64),
-            nn.ReLU()
         )
         self.res_con1 = nn.Conv1d(in_channels=64, out_channels=128, kernel_size=2, stride=2)
         self.res2 = nn.Sequential(
             nn.Conv1d(in_channels=64, out_channels=64, kernel_size=2, stride=2),
-            nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Conv1d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(128),
-            nn.ReLU()
         )
         self.res_con2 = nn.Conv1d(in_channels=128, out_channels=128, kernel_size=2, stride=2)
         self.res3 = nn.Sequential(
             nn.Conv1d(in_channels=128, out_channels=128, kernel_size=2, stride=2),
-            nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Conv1d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm1d(128),
-            nn.ReLU()
         )
         self.flatten = nn.Flatten(start_dim=-2, end_dim=-1)
         self.dense = nn.Sequential(
@@ -59,8 +58,7 @@ class ResNet(ContrastiveModel):
             batch, num, w, f = x.shape
             x = x.view(batch, num, f, w)
             feature_pos, feature_pos_aug, feature_neg, neg_weights = self.generate_contrastive_samples(x, labels)
-            out = self.dense(feature_pos)
-            return out, feature_pos, feature_pos_aug, feature_neg, neg_weights
+            return pn_rul_compute(self.dense, feature_pos, feature_neg), feature_pos, feature_pos_aug, feature_neg, w
         else:  # if len(shape) == 3, use the regression computing process
             batch, w, f = x.shape
             x = x.view(batch, f, w)
@@ -69,7 +67,9 @@ class ResNet(ContrastiveModel):
             return out
 
     def feature_extractor(self, x):
-        x1 = self.norm1(self.conv(x))
+        # if self.MaV:
+        #     x = self.MaV(x)
+        x1 = self.conv(x)
         x2 = self.res1(x1) + x1
         x3 = self.res_con1(x2) + self.res2(x2)
         x4 = self.res_con2(x3) + self.res3(x3)
@@ -89,39 +89,6 @@ class ResNet(ContrastiveModel):
 
 
 if __name__ == '__main__':
-    window_size = 16
-    threshold = 125
-    neg_samples = 4
-    batch_size = 256 // (neg_samples-1)
-    # batch_size = 256
-    subset = cmapss.Subset.FD001
-    Loss = "InfoNCE"
-    model_flag = "RUL-ContrastiveResNet-w{}-batch{}-thresh{}-{}-neg{}-dim64-{}-1-Theta". \
-        format(window_size,
-               batch_size,
-               threshold,
-               subset.value,
-               neg_samples-1,
-               Loss)
-    train, test, val, scalar = cmapss.get_data(cmapss.DEFAULT_ROOT,
-                                               subset,
-                                               window_size=window_size,
-                                               slide_step=1,
-                                               sensors=cmapss.DEFAULT_SENSORS,
-                                               rul_threshold=threshold,
-                                               label_norm=True,
-                                               val_ratio=0.2)
-    net = ResNet(in_features=len(cmapss.DEFAULT_SENSORS), window_size=window_size, model_flag=model_flag,
-                 device="cuda:1")
-    visual_samples = torch.tensor(train.data[np.where(train.ids == 1)], dtype=torch.float32).to("cuda:1")
-    net.set_visual_samples(visual_samples)
-    sampler = cmapss.CmapssNegativeSampler(train, 1, neg_samples)
-    net.prepare_data(train, test, val, batch_size=batch_size, num_workers=1, eval_shuffle=False)
-    net.train_model(epoch=100,
-                    lr=1e-3,
-                    # criterion=nn.MSELoss(),
-                    criterion=MSEContrastiveLoss(contrastive=Loss),
-                    optimizer="adam",
-                    lr_lambda=lambda x: 10 ** -(x // 15),
-                    early_stop=10,
-                    show_batch_loss=False)
+    inp = torch.randn((64, 8192, 2)).cuda()
+    model = ResNet(in_features=2, window_size=8192)
+    out = model(inp)

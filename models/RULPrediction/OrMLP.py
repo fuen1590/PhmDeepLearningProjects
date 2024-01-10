@@ -44,6 +44,7 @@ class OrMLPMapper(nn.Module):
             tf.append(layer(x))
         tf = torch.concat(tf, dim=-1)  # (batch, n*feature, n*window)
         tf = self.temporal_fuse(tf)
+        tf = self.feature_fuse(tf.transpose(-1, -2))
         return tf
 
     def orthogonal_loss(self, reg=1e-6):
@@ -113,8 +114,9 @@ class OrMLPNet(ContrastiveModel):
                  hidden_modules,
                  regularize=True,
                  model_flag="OrMLPNet",
-                 device="cuda:0"):
-        super(OrMLPNet, self).__init__(model_flag=model_flag, device=device)
+                 device="cuda:0",
+                 label_norm=True):
+        super(OrMLPNet, self).__init__(model_flag=model_flag, device=device, label_norm=label_norm)
         self.hidden_dim = hidden_modules*(window_size+feature_num)
         self.input_layer = OrMLPMapper(window_size=window_size,
                                        feature_num=feature_num,
@@ -143,14 +145,22 @@ class OrMLPNet(ContrastiveModel):
     def forward(self, x, label=None):
         if len(x.shape) < 4:
             feature = self.feature_extractor(x)
-            # return self.out_layer(feature)
-            return feature
+            print(feature.shape)
+            return self.out_layer(feature)
+            # return feature
         else:
             f_pos, f_apos, f_neg, w = self.generate_contrastive_samples(x, label)
             return pn_rul_compute(self.out_layer, f_pos, f_neg), f_pos, f_apos, f_neg, w
 
     def feature_extractor(self, x):
         x = self.input_layer(x)
+        print(x.shape)
+        x = self.mlp1(x)
+        print(x.shape)
+        x = self.mlp2(x)
+        print(x.shape)
+        x = self.mlp3(x)
+        x = self.mlp4(x)
         return x
 
     def orthogonal_loss(self, reg=1e-6):
