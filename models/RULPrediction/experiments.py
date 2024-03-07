@@ -76,7 +76,6 @@ if __name__ == '__main__':
     step_size = 1
     negs = 5
     bs = 1024
-    # dataset = xjtu.Condition.OP_B
     dataset = cmapss.Subset.FD004
     device = "cuda:1"
     exp_ti = 1
