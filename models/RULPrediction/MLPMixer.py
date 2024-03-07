@@ -253,23 +253,3 @@ class DualMLPMixer(ContrastiveModel):
             return loss + self.orthogonal_loss(), rul
         else:
             return loss, rul
-
-
-if __name__ == '__main__':
-    from dataset.utils import count_parameters
-    net = DualMLPMixer(window_size=15, in_features=14, hidden_dim=256, num_layers=12, dropout=0.4)
-    count_parameters(net)
-    # import dataset.cmapss as cmapss
-    # import models.RULPrediction as rul
-    # from dataset.utils import compute_metrics
-    # net.load_state_dict(torch.load(r"/home/fuen/DeepLearningProjects/FaultDiagnosis/train/model_result/RUL-MLPDualMixer-h32-8-norm1-w30-batch51-thresh125-FD001-neg4-InfoNCE1/model.pt"))
-    # train, test, val, scalar = cmapss.get_data(cmapss.DEFAULT_ROOT,
-    #                                            cmapss.Subset.FD001,
-    #                                            window_size=30,
-    #                                            slide_step=1,
-    #                                            sensors=cmapss.DEFAULT_SENSORS,
-    #                                            rul_threshold=125,
-    #                                            label_norm=True,
-    #                                            val_ratio=0.2)
-    # inp = torch.FloatTensor(np.stack([test[i][0] for i in range(3000)])).cuda()
-    # out = net(inp[0:1])
