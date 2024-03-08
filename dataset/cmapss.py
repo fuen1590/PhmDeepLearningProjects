@@ -340,29 +340,6 @@ def split_val_set(train_set: pd.DataFrame, val_size=0.2):
     return pd.concat(train_set_result), pd.concat(val_set_result)
 
 
-def plot_sensor_data(path: str, engine_id: int, subset: Subset, sensors: list = None):
-    import matplotlib.pyplot as plt
-    plt.switch_backend("agg")
-    plt.figure(figsize=(10, 10), dpi=600)
-    train_file = 'train_' + subset.value + '.txt'
-    index_names = ['unit_nr', 'time_cycles']
-    setting_names = ['setting_1', 'setting_2', 'setting_3']
-    sensor_names = ['s_{}'.format(i + 1) for i in range(0, 21)]
-    col_names = index_names + setting_names + sensor_names
-    data = pd.read_csv((path + train_file), sep=r'\s+', header=None, names=col_names)
-    if sensors is None:
-        sensors = sensor_names
-    l = len(sensors)
-    i = 0
-    for sensor in sensors:
-        plt.subplot(7, 3, i + 1)
-        plt.plot(data[data["unit_nr"] == engine_id][sensor])
-        plt.title(sensor)
-        i += 1
-    plt.tight_layout()
-    plt.savefig(r"/home/fuen/DeepLearningProjects/FaultDiagnosis/result.png", dpi=600)
-
-
 if __name__ == '__main__':
     train1, test1, val1, scaler = get_data(DEFAULT_ROOT,
                                            Subset.FD004,
