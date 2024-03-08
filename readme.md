@@ -6,6 +6,7 @@ as well as a feature constraint method based on supervised contrastive learning 
 
 ## Dual-Mixer Model
 The Dual-Mixer Model is constructed based on multi-layer MLP. 
+
 The core module of this model is the Dual-path Mixer Layer, which implements a progressive feature fusion process layer by layer:
 ![Layer Structure](.assets/layer_structure.png "Dual-Mixer Layer")
 
@@ -25,15 +26,22 @@ pandas >= 2.0.0
 scikit-learn >= 1.3.0
 
 ### Dataset
-Our experiments are base on the CMAPSS dataset [1]. The raw data could be downloaded from: https://github.com/schwxd/LSTM-Keras-CMAPSS/tree/master/C-MAPSS-Data.
+Our experiments are base on the CMAPSS dataset [1]. 
+
+The raw data could be downloaded from: https://github.com/schwxd/LSTM-Keras-CMAPSS/tree/master/C-MAPSS-Data.
+
 After downloading, place the data files train_FD00X.txt, test_FD00X.txt, 
 and RUL_FD00X.txt in the raw_data/ folder (or any other folder you specify).
+
+The dataset/cmapss.py contains all the code for preprocessing dataset, including the Gaussian Threshold Sampling method proposed
+in this paper.
 
 ### Train
 Simply run :
 > python ./models/RULPrediction/experiments.py
 
-This will execute the training process of the Dual-Mixer on the FD004 dataset.
+This will execute the training process of the Dual-Mixer on the FD004 dataset. The training results are restored in
+the train/*model_flag* folder, where *model_flag* is generated automatically.
 
 If you placed the dataset in a folder other than raw_data/, you need to modify the parameter 
 *cmapss.DEFAULT_ROOT* on **line 56** in the *experiments.py* file:
