@@ -7,7 +7,6 @@ import torch
 import numpy as np
 from SimpleModels import *
 from OrMLP import OrMLPNet
-from MCRNN import Rnn2DNet
 from MLPMixer import MLPMixer, DualMLPMixer
 from BiGRU_TSAM import BiGRU_TSAM
 from IMDSSN import IMDSSN
@@ -73,16 +72,15 @@ def train_cmapss(model: rul.ContrastiveModel,
 
 if __name__ == '__main__':
     length = 30
-    step_size = 1
-    negs = 5
+    step_size = 1  # a step size to construct training samples
+    negs = 5  # the number of negative samples if using FSGRI
     bs = 1024
-    dataset = cmapss.Subset.FD004
-    device = "cuda:1"
-    exp_ti = 1
-    contra_training = False
-    label_norm = True
+    dataset = cmapss.Subset.FD004  # a enum object, see detail in cmapss.Subset.
+    device = "cuda:0"  # which device, 'cpu', 'cuda', 'cuda:*'
+    exp_ti = 1  # experiment count, using to construct a model_flag
+    contra_training = False  # if using FSGRI
+    label_norm = True  # if True, the RUL label will be in [0, 1], else [0, number of cycles]
     # filter_size = 0
-    filter_size = 0
 
     # Dual-Mixer only
     mixer_layer_num = 6
@@ -95,6 +93,6 @@ if __name__ == '__main__':
                        dropout=dropout,
                        or_loss=False,
                        device=device, model_flag=f"MLPDualMixer-h{hidden_dim}-{mixer_layer_num}", label_norm=label_norm,
-                       filter_size=filter_size)
+                       filter_size=0)
 
     net = train_cmapss(net, length, negs, bs, dataset, exp_time=exp_ti, contra=contra_training, label_norm=label_norm, )

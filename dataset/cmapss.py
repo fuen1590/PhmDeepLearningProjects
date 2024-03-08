@@ -10,8 +10,7 @@ from torch.utils.data import Dataset
 from enum import Enum
 from dataset.utils import Sampler, gaussian_distribution
 
-DEFAULT_ROOT = r"/home/fuen/DeepLearningProjects/FaultdiagnosisDataset/" \
-               r"IEEE PHM 2008涡轮风扇发动机退化仿真数据集CMAPSSData.zip/data/"
+DEFAULT_ROOT = r"./raw_data/"
 
 DEFAULT_SENSORS = ["s_2", "s_3", "s_4", "s_7", "s_8", "s_9", "s_11", "s_12", "s_13",
                    "s_14", "s_15", "s_17", "s_20", "s_21"]

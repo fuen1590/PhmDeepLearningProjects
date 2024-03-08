@@ -5,7 +5,7 @@
       <paths name="fuen@222.28.68.73:22">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/fuen/DeepLearningProjects/FaultDiagnosis" local="$PROJECT_DIR$" />
+            <mapping deploy="/home/fuen/DeepLearningProjects/DualMixerProject" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
