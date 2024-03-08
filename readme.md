@@ -47,7 +47,7 @@ If you placed the dataset in a folder other than raw_data/, you need to modify t
 *cmapss.DEFAULT_ROOT* on **line 56** in the *experiments.py* file:
 >     train, test, val, scalar = cmapss.get_data(cmapss.DEFAULT_ROOT, ...
 
-To:
+to:
 >     train, test, val, scalar = cmapss.get_data(your_data_path, ...
 
 You can edit experiments.py to modify different training parameters, such as Batch Size (***bs***), ***mixer_layer_num***, etc.
@@ -58,6 +58,6 @@ The ***net*** object in experiments.py can be changed to the following models:
 More details can be found in their respective code files.
 
 
-## Reference
+## References
 1. Abhinav Saxena, Kai Goebel, Don Simon, and Neil Eklund. Damage propagation modeling for aircraft engine run-to-failure simulation. In
 2008 International Conference on Prognostics and Health Management. IEEE, 2008.
