@@ -54,7 +54,7 @@ to:
 You can edit experiments.py to modify different training parameters, such as Batch Size (***bs***), ***mixer_layer_num***, etc.
 
 The ***net*** object in experiments.py can be changed to the following models:
-> OrMLPNet / MLPMixer / BiGRU_TSAM / IMDSSN
+> MLPMixer / BiGRU_TSAM / IMDSSN et al.
 
 More details can be found in their respective code files.
 
