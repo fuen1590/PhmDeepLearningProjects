@@ -8,6 +8,7 @@ as well as a feature constraint method based on supervised contrastive learning 
 The Dual-Mixer Model is constructed based on multi-layer MLP. 
 
 The core module of this model is the Dual-path Mixer Layer, which implements a progressive feature fusion process layer by layer:
+
 ![Layer Structure](.assets/layer_structure.png "Dual-Mixer Layer")
 
 ## FSGRI
