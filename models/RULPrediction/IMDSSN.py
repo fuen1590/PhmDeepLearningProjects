@@ -424,20 +424,3 @@ class IMDSSN(ContrastiveModel):
         else:  # the forward with negative samples, default shape with (b, num, l, f)
             f_pos, f_apos, f_neg, w = self.generate_contrastive_samples(x, label)
             return pn_rul_compute(self.output, f_pos, f_neg), f_pos, f_apos, f_neg, w
-
-
-if __name__ == '__main__':
-    log_att = LogSparseAttention(n_head=2, n_embd=512, win_len=30, scale=True, q_len=5, sub_len=10, sparse=True)
-    pro_att = ProbAttentionLayer(
-        d_model=512, n_heads=2
-    )
-    encoder = Encoder(30, 512, pro_att)
-    net = IMDSSN(window_size=30, in_features=14, hidden_dim=512, encoder_nums=1,
-                 n_heads=2, device="cpu", pe=True)
-    inp = torch.randn(2, 30, 512)
-    pro_out = pro_att(inp)
-    log_out = log_att(inp)
-    enc_out = encoder(inp)
-    inp = torch.randn(2, 30, 14)
-    lab = torch.randn(2, 5)
-    net_out = net(inp)
