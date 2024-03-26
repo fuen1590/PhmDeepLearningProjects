@@ -166,11 +166,3 @@ class DAMCNN(ContrastiveModel):
 
     def epoch_start(self):
         super(DAMCNN, self).epoch_start()
-
-
-if __name__ == '__main__':
-    N = 4
-    x = torch.randn(N, 40, 14).to("cpu")
-    model_ex = DAMCNN(40, 14).to("cpu")
-    y = model_ex(x)
-    print(y.shape)
