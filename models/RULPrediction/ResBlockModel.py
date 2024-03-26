@@ -86,9 +86,3 @@ class ResNet(ContrastiveModel):
         self.visual_samples = samples
         self.visual_samples = torch.transpose(self.visual_samples, -1, -2)
         self.tsne = manifold.TSNE(n_components=2, random_state=2023)
-
-
-if __name__ == '__main__':
-    inp = torch.randn((64, 8192, 2)).cuda()
-    model = ResNet(in_features=2, window_size=8192)
-    out = model(inp)
