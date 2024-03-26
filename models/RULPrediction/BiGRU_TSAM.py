@@ -78,9 +78,3 @@ class BiGRU_TSAM(ContrastiveModel):
         else:
             f_pos, f_apos, f_neg, weight = self.generate_contrastive_samples(x, label)
             return pn_rul_compute(self.output, f_pos, f_neg), f_pos, f_apos, f_neg, weight
-
-
-if __name__ == '__main__':
-    a = torch.ones((2, 30, 14)).to("cuda:0")
-    l = BiGRU_TSAM(window_size=30, in_features=14)
-    b = l(a)
