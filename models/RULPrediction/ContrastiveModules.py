@@ -37,9 +37,7 @@ class WeightedInfoNCELoss(nn.Module):
         :param pos: The positive samples of x with shape (batch, num_p, length, feature) or (batch, num_p, feature),
                     where num is the number of the positive samples.
         :param neg: The negative samples of x with shape (batch, num_n, length, feature)
-        :param neg_weight: The weight used for different negative samples with shape (batch, num_n). Weights are
-                           from [0, 1], the bigger weight represents the sample will be pushed more powerful from
-                           x.
+        :param neg_weight: The weight used for different negative samples with shape (batch, num_n).
 
         :return: A scalar of the contrastive loss.
         """
