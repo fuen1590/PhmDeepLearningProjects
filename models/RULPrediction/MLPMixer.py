@@ -210,31 +210,6 @@ class DualMLPMixer(ContrastiveModel):
             f_pos, f_apos, f_neg, weight = self.generate_contrastive_samples(x, label)
             return pn_rul_compute(self.output, f_pos, f_neg), f_pos, f_apos, f_neg, weight
 
-    def orthogonal_loss(self, reg=1e-6):
-        loss = 0
-        weights = self.input_embedding.weight
-        org = weights @ weights.T
-        org = org - torch.eye(org.shape[0]).to(self.device)
-        loss = loss + reg * org.abs().sum()
-        for layer in self.layers:
-            weights = layer.block1[0].weight
-            org = weights @ weights.T
-            org = org - torch.eye(org.shape[0]).to(self.device)
-            loss = loss + reg * org.abs().sum()
-            weights = layer.block1[3].weight
-            org = weights @ weights.T
-            org = org - torch.eye(org.shape[0]).to(self.device)
-            loss = loss + reg * org.abs().sum()
-            weights = layer.block2[0].weight
-            org = weights @ weights.T
-            org = org - torch.eye(org.shape[0]).to(self.device)
-            loss = loss + reg * org.abs().sum()
-            weights = layer.block2[3].weight
-            org = weights @ weights.T
-            org = org - torch.eye(org.shape[0]).to(self.device)
-            loss = loss + reg * org.abs().sum()
-        return loss
-
     def compute_loss(self,
                      x: torch.Tensor,
                      label: torch.Tensor,
