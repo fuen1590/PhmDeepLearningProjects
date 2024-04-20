@@ -183,10 +183,6 @@ class DualMLPMixer(ContrastiveModel):
             # nn.Dropout(dropout),
             nn.Linear(in_features=hidden_dim*window_size, out_features=1)
         )
-        self.hidden_out_1 = []
-        self.hidden_out_2 = []
-        self.gat_weights_1 = []
-        self.gat_weights_2 = []
         self.or_loss = or_loss
         self.to(device)
 
@@ -201,14 +197,9 @@ class DualMLPMixer(ContrastiveModel):
         f2 = x
         for l in self.layers:
             f1, f2 = l(f1, f2)
-            # self.hidden_out_1.append(f1)
-            # self.hidden_out_2.append(f2)
-            # self.gat_weights_1.append(l.gat_weights_1)
-            # self.gat_weights_2.append(l.gat_weights_2)
         f1 = self.out_gat1(f1.transpose(-1, -2))
         f2 = self.out_gat2(f2)
         f = torch.flatten(f1.transpose(-1, -2) + f2, start_dim=-2, end_dim=-1)
-        # f = torch.flatten(f1 + f2, start_dim=-2, end_dim=-1)
         return f
 
     def forward(self, x, label=None):
