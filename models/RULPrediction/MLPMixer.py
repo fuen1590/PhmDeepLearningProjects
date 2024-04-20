@@ -159,7 +159,6 @@ class DualMLPMixer(ContrastiveModel):
                  hidden_dim,
                  num_layers,
                  dropout=0.5,
-                 or_loss=False,
                  model_flag="MLPDualMixer", device="cuda:0", label_norm=True,
                  filter_size=0):
         super(DualMLPMixer, self).__init__(model_flag=model_flag, device=device, label_norm=label_norm)
@@ -183,7 +182,6 @@ class DualMLPMixer(ContrastiveModel):
             # nn.Dropout(dropout),
             nn.Linear(in_features=hidden_dim*window_size, out_features=1)
         )
-        self.or_loss = or_loss
         self.to(device)
 
     def feature_extractor(self, x):
@@ -215,7 +213,4 @@ class DualMLPMixer(ContrastiveModel):
                      label: torch.Tensor,
                      criterion) -> [torch.Tensor, torch.Tensor]:
         [loss, rul] = super(DualMLPMixer, self).compute_loss(x, label, criterion)
-        if self.or_loss:
-            return loss + self.orthogonal_loss(), rul
-        else:
-            return loss, rul
+        return loss, rul
