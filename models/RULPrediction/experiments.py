@@ -90,7 +90,6 @@ if __name__ == '__main__':
                        hidden_dim=hidden_dim,
                        num_layers=mixer_layer_num,
                        dropout=dropout,
-                       or_loss=False,
                        device=device, model_flag=f"MLPDualMixer-h{hidden_dim}-{mixer_layer_num}", label_norm=label_norm,
                        filter_size=0)
 
