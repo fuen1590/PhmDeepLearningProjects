@@ -145,9 +145,6 @@ class ContrastiveModel(TrainableModule):
 
         x_ = x.view(batch * num, w, f)
         pos = x[:, 0, :, :]
-        # mask = torch.zeros_like(pos).uniform_(0, 1)  # random drop features from x to get augment samples. (30%)
-        # mask = torch.where(mask < 0.7, 1, 0).to(self.device)
-        # pos_aug = mask * pos
         mask = torch.normal(0, 0.15, (batch, w, f), device=pos.device)  # random noise
         pos_aug = mask + pos
         all_features = self.feature_extractor(x_)
@@ -156,22 +153,6 @@ class ContrastiveModel(TrainableModule):
         feature_pos = features[:, 0]
         feature_neg = features[:, 1:]
         neg_weights = torch.abs(labels[:, 1:] - labels[:, 0:1]) * 2
-
-        # assert len(x.shape) == 4
-        # batch, num, w, f = x.shape
-        # pos = x[:, 0, :, :]  # (batch, w, f)
-        # neg = x[:, 1:, :, :]  # (batch, num_n, w, f)
-        # # mask = torch.zeros_like(pos).uniform_(0, 1)  # random drop features from x to get augment samples. (30%)
-        # # mask = torch.where(mask < 0.7, 1, 0).to(self.device)
-        # mask = torch.randn_like(pos)  # random noise
-        # pos_aug = mask + pos
-        # feature_pos = self.feature_extractor(pos)
-        # feature_neg = [0] * (num - 1)
-        # for i in range(num - 1):
-        #     feature_neg[i] = self.feature_extractor(neg[:, i, :, :])
-        # feature_neg = torch.stack(feature_neg, dim=1)
-        # feature_pos_aug = self.feature_extractor(pos_aug)
-        # neg_weights = torch.abs(labels[:, 1:] - labels[:, 0:1]) * 2
 
         return feature_pos, feature_pos_aug, feature_neg, neg_weights
 
