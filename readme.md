@@ -1,6 +1,8 @@
 # Supervised Contrastive Learning based Dual-Mixer Model for Remaining Useful Life Prediction
 This repository is the implementation for the paper Supervised Contrastive Learning based Dual-Mixer Model for Remaining Useful Life Prediction: https://arxiv.org/abs/2401.16462. 
 
+***Our paper has been accepted by Reliability Engineering & System Safety, and available online now: https://www.sciencedirect.com/science/article/pii/S0951832024004708***
+
 The paper proposes a novel progressive feature fusion model called **Dual-path Mixer Model (Dual-Mixer)** for RUL prediction, 
 as well as a feature constraint method based on supervised contrastive learning called **Feature Space Global Relationship Invariance (FSGRI)**.
 
@@ -58,7 +60,19 @@ The ***net*** object in experiments.py can be changed to the following models:
 
 More details can be found in their respective code files.
 
-
+## Citiation
+If our work is useful for you, please cite our paper as follows:
+```
+@article{FU2024110398,
+title = {Supervised contrastive learning based dual-mixer model for Remaining Useful Life prediction},
+journal = {Reliability Engineering & System Safety},
+pages = {110398},
+year = {2024},
+issn = {0951-8320},
+doi = {https://doi.org/10.1016/j.ress.2024.110398},
+author = {En Fu and Yanyan Hu and Kaixiang Peng and Yuxin Chu},
+}
+```
 ## References
 1. Abhinav Saxena, Kai Goebel, Don Simon, and Neil Eklund. Damage propagation modeling for aircraft engine run-to-failure simulation. In
 2008 International Conference on Prognostics and Health Management. IEEE, 2008.
