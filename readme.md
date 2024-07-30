@@ -1,7 +1,7 @@
 # Supervised Contrastive Learning based Dual-Mixer Model for Remaining Useful Life Prediction
 This repository is the implementation for the paper Supervised Contrastive Learning based Dual-Mixer Model for Remaining Useful Life Prediction: https://arxiv.org/abs/2401.16462. 
 
-***Our paper has been accepted by Reliability Engineering & System Safety, and available online now: https://www.sciencedirect.com/science/article/pii/S0951832024004708***
+***Our paper has been accepted by *Reliability Engineering & System Safety* and is now available online: https://www.sciencedirect.com/science/article/pii/S0951832024004708***
 
 The paper proposes a novel progressive feature fusion model called **Dual-path Mixer Model (Dual-Mixer)** for RUL prediction, 
 as well as a feature constraint method based on supervised contrastive learning called **Feature Space Global Relationship Invariance (FSGRI)**.
@@ -61,7 +61,7 @@ The ***net*** object in experiments.py can be changed to the following models:
 More details can be found in their respective code files.
 
 ## Citiation
-If our work is useful for you, please cite our paper as follows:
+If you find our work useful, please cite our paper as follows:
 ```
 @article{FU2024110398,
 title = {Supervised contrastive learning based dual-mixer model for Remaining Useful Life prediction},
