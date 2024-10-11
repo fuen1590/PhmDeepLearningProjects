@@ -1,5 +1,5 @@
 # Supervised Contrastive Learning based Dual-Mixer Model for Remaining Useful Life Prediction
-This repository is the implementation for the paper Supervised Contrastive Learning based Dual-Mixer Model for Remaining Useful Life Prediction: https://arxiv.org/abs/2401.16462. 
+This repository is the implementation for the paper Supervised Contrastive Learning based Dual-Mixer Model for Remaining Useful Life Prediction. 
 
 ***Our paper has been accepted by *Reliability Engineering & System Safety* and is now available online: https://www.sciencedirect.com/science/article/pii/S0951832024004708***
 
