@@ -1,5 +1,4 @@
 import dataset.cmapss as cmapss
-import dataset.xjtu as xjtu
 import models.RULPrediction as rul
 from dataset.utils import compute_metrics
 
@@ -61,7 +60,6 @@ def train_cmapss(model: rul.ContrastiveModel,
                                                label_norm=label_norm,
                                                val_ratio=0.2)
     if contra:
-        # cmapss.CmapssPiecewiseNegativeSampler(train, 1, neg_samples)
         cmapss.CmapssGaussianNegativeSampler(train, neg_samples, thresh=0.5, std=0.3)
     visual_samples = torch.tensor(train.data[np.where(train.ids == 1)], dtype=torch.float32).to(model.device)
     model = train_model(model=model, train_set=train, test_set=test, val_set=val,
